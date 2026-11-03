@@ -54,7 +54,8 @@ sleep 10
 
 # 6. Verify Deployment Health
 echo "[*] Testing API health status..."
-HEALTH_RESPONSE=$(curl -s http://127.0.0.1:8085/api/health || echo "failed")
+HEALTH_PORT=${PORT:-2085}
+HEALTH_RESPONSE=$(curl -s "http://127.0.0.1:${HEALTH_PORT}/api/health" || echo "failed")
 echo "Health Endpoint: $HEALTH_RESPONSE"
 
 echo "==========================================================="

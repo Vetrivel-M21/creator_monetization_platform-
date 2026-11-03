@@ -10,7 +10,7 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o server main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o server main.go
 
 # Production Stage
 FROM alpine:3.19
@@ -24,6 +24,6 @@ COPY --from=builder /app/server .
 # Ensure storage directories exist
 RUN mkdir -p /app/data/masters /app/data/hls /app/data/thumbnails /app/data/logos /app/logs
 
-EXPOSE 8085
+EXPOSE 2085
 
 CMD ["./server"]

@@ -21,6 +21,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - armss-net
 
   # Go Backend API Service (Chi Router + CMAF Transcoding + Monetization Engine)
   backend:
@@ -32,20 +34,22 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
-      PORT: 8085
-      MYSQL_USER: ${MYSQL_USER:-creator_user}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-creator_pass@2026}
+      PORT: ${PORT:-2085}
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-creator_platform}
-      JWT_SECRET: ${JWT_SECRET:-super-secret-creator-platform-jwt-token-2026}
     ports:
-      - "8085:8085"
+      - "${PORT:-2085}:${PORT:-2085}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       # CRITICAL: Persists uploaded videos, HLS chunks, logos and thumbnails across container redeploys
       - ./backend/data:/app/data
       - ./backend/logs:/app/logs
+    networks:
+      - armss-net
 
   # React Web Frontend (Nginx Production Reverse Proxy)
   frontend:
@@ -59,6 +63,12 @@ services:
     ports:
       - "80:80"
       - "8080:80"
+    networks:
+      - armss-net
+
+networks:
+  armss-net:
+    driver: bridge
 
 volumes:
   mysql_data:

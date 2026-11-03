@@ -8,7 +8,7 @@ import '../models/user_model.dart';
 
 class ApiService {
   // Workstation private Wi-Fi IP for seamless mobile device connectivity
-  static const String serverHost = '10.10.100.251:8085';
+  static const String serverHost = '10.10.100.251:2085';
   static const String baseUrl = 'http://$serverHost/api';
 
   static Map<String, String> _headers([String? token]) {

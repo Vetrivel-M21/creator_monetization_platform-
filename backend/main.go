@@ -169,7 +169,7 @@ func main() {
 	// 5. HTTP Server Configuration
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8085"
+		port = "2085"
 	}
 
 	server := &http.Server{
