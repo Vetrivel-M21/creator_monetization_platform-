@@ -9,12 +9,7 @@ services:
     env_file:
       - .env
     environment:
-      PORT: 2085
-      MYSQL_HOST: ${MYSQL_HOST:-host.docker.internal}
-      MYSQL_PORT: ${MYSQL_PORT:-3306}
-      MYSQL_USER: ${MYSQL_USER:-root}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-creator_platform}
+      - PORT=2085
     # Internal only: backend is never exposed directly to host/internet
     expose:
       - "2085"

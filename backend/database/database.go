@@ -20,11 +20,12 @@ var (
 )
 
 func InitDatabase() (*sql.DB, error) {
-	mysqlUser := getEnv("MYSQL_USER", "root")
-	mysqlPass := getEnv("MYSQL_PASSWORD", "Vetri@123")
-	mysqlHost := getEnv("MYSQL_HOST", "127.0.0.1")
-	mysqlPort := getEnv("MYSQL_PORT", "3306")
-	mysqlDB := getEnv("MYSQL_DATABASE", "creator_platform")
+	// Support both ARMSS Gateway standard (DB_*) and MySQL standard (MYSQL_*)
+	mysqlUser := getEnv("DB_USER", getEnv("MYSQL_USER", "root"))
+	mysqlPass := getEnv("DB_PASSWORD", getEnv("MYSQL_PASSWORD", ""))
+	mysqlHost := getEnv("DB_HOST", getEnv("MYSQL_HOST", "host.docker.internal"))
+	mysqlPort := getEnv("DB_PORT", getEnv("MYSQL_PORT", "3306"))
+	mysqlDB := getEnv("DB_NAME", getEnv("MYSQL_DATABASE", "creator_platform"))
 	mysqlDSN := os.Getenv("MYSQL_DSN")
 
 	if mysqlDSN == "" {
