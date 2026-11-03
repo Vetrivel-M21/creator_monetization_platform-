@@ -1,5 +1,5 @@
 services:
-  # Go Backend API Service (Chi Router + CMAF Transcoding + Monetization Engine)
+  # Go Backend API Service (Internal Docker network only)
   backend:
     build:
       context: ./backend
@@ -9,14 +9,15 @@ services:
     env_file:
       - .env
     environment:
-      PORT: ${PORT:-2085}
+      PORT: 2085
       MYSQL_HOST: ${MYSQL_HOST:-host.docker.internal}
       MYSQL_PORT: ${MYSQL_PORT:-3306}
       MYSQL_USER: ${MYSQL_USER:-root}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-creator_platform}
-    ports:
-      - "${PORT:-2085}:${PORT:-2085}"
+    # Internal only: backend is never exposed directly to host/internet
+    expose:
+      - "2085"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -26,7 +27,7 @@ services:
     networks:
       - armss-net
 
-  # React Web Frontend (Nginx Production Reverse Proxy)
+  # React Web Frontend & Nginx Single Entry Reverse Proxy (The ONLY exposed port)
   frontend:
     build:
       context: ./frontend
@@ -35,8 +36,9 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+    # Single public port: serves Frontend Web SPA + proxies /api/, /playback/, /thumbnails/, /logos/, /data/
     ports:
-      - "${FRONTEND_PORT:-2086}:80"
+      - "${PORT:-2085}:80"
     networks:
       - armss-net
 
