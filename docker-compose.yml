@@ -1,27 +1,4 @@
 services:
-  # MySQL Database Engine (ACID Transactional Storage)
-  mysql:
-    image: mysql:8.0
-    container_name: creator_mysql
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword@2026}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-creator_platform}
-      MYSQL_USER: ${MYSQL_USER:-creator_user}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-creator_pass@2026}
-    # Bind to local loopback only so database is not exposed to the public internet
-    ports:
-      - "127.0.0.1:3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword@2026}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks:
-      - armss-net
-
   # Go Backend API Service (Chi Router + CMAF Transcoding + Monetization Engine)
   backend:
     build:
@@ -29,15 +6,15 @@ services:
       dockerfile: Dockerfile
     container_name: creator_backend
     restart: unless-stopped
-    depends_on:
-      mysql:
-        condition: service_healthy
     env_file:
       - .env
     environment:
       PORT: ${PORT:-2085}
-      MYSQL_HOST: mysql
-      MYSQL_PORT: 3306
+      MYSQL_HOST: ${MYSQL_HOST:-host.docker.internal}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_USER: ${MYSQL_USER:-root}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-creator_platform}
     ports:
       - "${PORT:-2085}:${PORT:-2085}"
     extra_hosts:
@@ -67,7 +44,3 @@ services:
 networks:
   armss-net:
     driver: bridge
-
-volumes:
-  mysql_data:
-    driver: local
