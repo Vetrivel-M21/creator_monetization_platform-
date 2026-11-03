@@ -1,20 +1,55 @@
 services:
-  # Go Backend API Service (Internal Docker network only)
+  # Dedicated Project MySQL Database Container (Isolated from host MySQL)
+  mysql:
+    image: mysql:8.0
+    container_name: creator_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword@2026}
+      MYSQL_DATABASE: ${DB_NAME:-creator_platform}
+      MYSQL_USER: ${DB_USER:-creator_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-creator_pass@2026}
+    # No host port exposed! MySQL is completely private to armss-net to prevent collision with host 3306
+    expose:
+      - "3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-rootpassword@2026}"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+    networks:
+      - armss-net
+
+  # Go Backend API Service (Connects to dedicated 'mysql' container)
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: creator_backend
     restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
     env_file:
       - .env
     environment:
       - PORT=2085
-    # Internal only: backend is never exposed directly to host/internet
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=${DB_USER:-creator_user}
+      - DB_PASSWORD=${DB_PASSWORD:-creator_pass@2026}
+      - DB_NAME=${DB_NAME:-creator_platform}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=${DB_USER:-creator_user}
+      - MYSQL_PASSWORD=${DB_PASSWORD:-creator_pass@2026}
+      - MYSQL_DATABASE=${DB_NAME:-creator_platform}
+    # Internal only: backend communicates with frontend via armss-net
     expose:
       - "2085"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       # CRITICAL: Persists uploaded videos, HLS chunks, logos and thumbnails across container redeploys
       - ./backend/data:/app/data
@@ -22,7 +57,7 @@ services:
     networks:
       - armss-net
 
-  # React Web Frontend & Nginx Single Entry Reverse Proxy (The ONLY exposed port)
+  # React Web Frontend & Nginx Single Entry Reverse Proxy (The ONLY exposed port on host)
   frontend:
     build:
       context: ./frontend
@@ -31,7 +66,7 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
-    # Single public port: serves Frontend Web SPA + proxies /api/, /playback/, /thumbnails/, /logos/, /data/
+    # The ONLY public port: serves Web App UI + proxies /api/, /playback/, /thumbnails/, /logos/, /data/
     ports:
       - "${PORT:-2085}:80"
     networks:
@@ -40,3 +75,7 @@ services:
 networks:
   armss-net:
     driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local

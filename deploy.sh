@@ -76,6 +76,6 @@ echo " Single Unified Port: http://<server-ip>:${PORT:-2085}"
 echo "   - Web App UI:      http://<server-ip>:${PORT:-2085}"
 echo "   - API Endpoints:   http://<server-ip>:${PORT:-2085}/api"
 echo "   - HLS Playback:    http://<server-ip>:${PORT:-2085}/playback"
-echo " MySQL Database:     host.docker.internal:3306"
+echo " MySQL Database:   Dedicated Container (mysql:3306, volume: mysql_data)"
 echo "==========================================================="
 
