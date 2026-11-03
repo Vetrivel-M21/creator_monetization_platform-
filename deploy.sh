@@ -60,8 +60,8 @@ echo "Health Endpoint: $HEALTH_RESPONSE"
 
 echo "==========================================================="
 echo " [✓] ARMSS Platform Deployment Complete!"
-echo " Web Application:  http://<server-ip> (Port 80/8080)"
-echo " Backend API:      http://<server-ip>:8085/api"
-echo " MySQL Internal:   127.0.0.1:3306"
+echo " Web Application:  http://<server-ip>:${FRONTEND_PORT:-2086}"
+echo " Backend API:      http://<server-ip>:${PORT:-2085}/api"
+echo " MySQL Database:   host.docker.internal:3306"
 echo "==========================================================="
 
