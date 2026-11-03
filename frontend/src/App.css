@@ -1,0 +1,37 @@
+/* App-specific custom layout utilities */
+
+/* Bento Card Geometry (3-Column System) */
+.bento-hero {
+  grid-column: span 1 / span 1;
+}
+
+@media (min-width: 1024px) {
+  .bento-hero {
+    grid-column: span 2 / span 2;
+  }
+  .bento-side {
+    grid-column: span 1 / span 1;
+  }
+}
+
+/* Linear-style tabular numbers */
+.num-tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Glass Floating Nav Bar */
+.floating-glass-bar {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid #DCE7F6;
+  box-shadow: 0 12px 30px -10px rgba(220, 231, 246, 0.9);
+}
+
+/* Modal Overlay Blur */
+.modal-backdrop-blur {
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}

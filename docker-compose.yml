@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  # MySQL Database Engine (ACID Transactional Storage)
+  mysql:
+    image: mysql:8.0
+    container_name: creator_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword@2026}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-creator_platform}
+      MYSQL_USER: ${MYSQL_USER:-creator_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-creator_pass@2026}
+    # Bind to local loopback only so database is not exposed to the public internet
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword@2026}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Go Backend API Service (Chi Router + CMAF Transcoding + Monetization Engine)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: creator_backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      PORT: 8085
+      MYSQL_USER: ${MYSQL_USER:-creator_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-creator_pass@2026}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-creator_platform}
+      JWT_SECRET: ${JWT_SECRET:-super-secret-creator-platform-jwt-token-2026}
+    ports:
+      - "8085:8085"
+    volumes:
+      # CRITICAL: Persists uploaded videos, HLS chunks, logos and thumbnails across container redeploys
+      - ./backend/data:/app/data
+      - ./backend/logs:/app/logs
+
+  # React Web Frontend (Nginx Production Reverse Proxy)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: creator_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      - "8080:80"
+
+volumes:
+  mysql_data:
+    driver: local
