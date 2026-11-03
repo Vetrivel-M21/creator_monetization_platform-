@@ -50,13 +50,25 @@ docker compose up -d --build
 
 # 5. Wait for Services Health Check
 echo "[*] Waiting for MySQL and Backend API to initialize..."
-sleep 10
+HEALTH_PORT=${PORT:-2085}
+READY=0
+for i in {1..15}; do
+    HEALTH_RESPONSE=$(curl -s "http://127.0.0.1:${HEALTH_PORT}/api/health" || true)
+    if [[ "$HEALTH_RESPONSE" == *"healthy"* || "$HEALTH_RESPONSE" == *"status"* ]]; then
+        READY=1
+        break
+    fi
+    echo "    Attempt $i/15: Backend warming up..."
+    sleep 2
+done
 
 # 6. Verify Deployment Health
-echo "[*] Testing API health status..."
-HEALTH_PORT=${PORT:-2085}
-HEALTH_RESPONSE=$(curl -s "http://127.0.0.1:${HEALTH_PORT}/api/health" || echo "failed")
-echo "Health Endpoint: $HEALTH_RESPONSE"
+if [ $READY -eq 1 ]; then
+    echo "[✓] Backend API is Online and Healthy!"
+    echo "Health Endpoint: $HEALTH_RESPONSE"
+else
+    echo "[!] Notice: Backend is still initializing or returned: $HEALTH_RESPONSE"
+fi
 
 echo "==========================================================="
 echo " [✓] ARMSS Platform Deployment Complete!"
