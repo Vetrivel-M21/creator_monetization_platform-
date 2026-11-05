@@ -1,5 +1,5 @@
 class VideoModel {
-  static const String serverBase = 'http://10.10.100.251:8085';
+  static const String serverBase = 'http://10.10.100.251:2085';
 
   static String resolveUrl(String? url) {
     if (url == null || url.isEmpty) return '';

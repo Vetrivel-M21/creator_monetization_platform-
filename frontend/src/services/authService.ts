@@ -92,7 +92,7 @@ export const authService = {
     return res;
   },
 
-  loginWithGoogleCredential: async (payload: { credential?: string; code?: string }): Promise<AuthResponse> => {
+  loginWithGoogleCredential: async (payload: { credential?: string; code?: string; redirect_uri?: string }): Promise<AuthResponse> => {
     const res = await request<AuthResponse>('/auth/google', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -132,7 +132,10 @@ export const authService = {
                 return;
               }
               try {
-                const authRes = await authService.loginWithGoogleCredential({ code: response.code });
+                const authRes = await authService.loginWithGoogleCredential({
+                  code: response.code,
+                  redirect_uri: 'postmessage',
+                });
                 resolve(authRes);
               } catch (err) {
                 reject(err);

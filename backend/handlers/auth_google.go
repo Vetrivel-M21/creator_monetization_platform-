@@ -32,8 +32,9 @@ type GoogleTokenInfo struct {
 }
 
 type GoogleAuthRequest struct {
-	Credential string `json:"credential"`
-	Code       string `json:"code"`
+	Credential  string `json:"credential"`
+	Code        string `json:"code"`
+	RedirectURI string `json:"redirect_uri"`
 }
 
 // GoogleLogin handles verified Google ID tokens from Google Identity Services
@@ -95,20 +96,37 @@ func GoogleLogin(w http.ResponseWriter, r *http.Request) {
 
 	} else if req.Code != "" {
 		// 2. Exchange Authorization Code for Tokens
+		// For Google Identity Services (GIS) initCodeClient with popup mode, Google strictly requires 'postmessage'.
+		redirectURI := req.RedirectURI
+		if redirectURI == "" {
+			redirectURI = os.Getenv("GOOGLE_REDIRECT_URI")
+		}
+		if redirectURI == "" {
+			redirectURI = "postmessage"
+		}
+
 		tokenReqData := url.Values{}
 		tokenReqData.Set("code", req.Code)
 		tokenReqData.Set("client_id", googleClientID)
 		tokenReqData.Set("client_secret", googleClientSecret)
-		tokenReqData.Set("redirect_uri", "http://localhost:5173")
+		tokenReqData.Set("redirect_uri", redirectURI)
 		tokenReqData.Set("grant_type", "authorization_code")
 
 		tokenResp, err := httpClient.PostForm("https://oauth2.googleapis.com/token", tokenReqData)
 		if err != nil {
+			logger.ErrorLogger.Printf("[GoogleAuth] Failed to connect to Google token endpoint: %v", err)
 			w.WriteHeader(http.StatusBadGateway)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": "Failed to exchange authorization code with Google"})
 			return
 		}
 		defer tokenResp.Body.Close()
+
+		bodyBytes, err := io.ReadAll(tokenResp.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "Failed to read Google token response"})
+			return
+		}
 
 		var tokenResult struct {
 			IDToken     string `json:"id_token"`
@@ -116,9 +134,16 @@ func GoogleLogin(w http.ResponseWriter, r *http.Request) {
 			Error       string `json:"error"`
 			ErrorDesc   string `json:"error_description"`
 		}
-		if err := json.NewDecoder(tokenResp.Body).Decode(&tokenResult); err != nil || (tokenResult.IDToken == "" && tokenResult.AccessToken == "") {
+		if err := json.Unmarshal(bodyBytes, &tokenResult); err != nil || (tokenResult.IDToken == "" && tokenResult.AccessToken == "") {
+			errMsg := "Failed to parse Google OAuth token response"
+			if tokenResult.Error != "" {
+				errMsg = fmt.Sprintf("Google OAuth error: %s (%s)", tokenResult.Error, tokenResult.ErrorDesc)
+				logger.ErrorLogger.Printf("[GoogleAuth] Token exchange failed with Google: %s - %s (redirect_uri used: %s)", tokenResult.Error, tokenResult.ErrorDesc, redirectURI)
+			} else {
+				logger.ErrorLogger.Printf("[GoogleAuth] Raw token response (HTTP %d): %s", tokenResp.StatusCode, string(bodyBytes))
+			}
 			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "Failed to parse Google OAuth token response"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": errMsg})
 			return
 		}
 
