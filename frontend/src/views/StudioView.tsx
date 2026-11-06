@@ -509,7 +509,7 @@ export const StudioView: React.FC<StudioViewProps> = ({
                 Available Withdrawable Balance
               </div>
               <div className="text-3xl sm:text-4xl font-extrabold font-mono tracking-tight text-[#0F172A]">
-                ₹{((wallet?.availableBalance || 0) + (wallet?.welcomeCredit || 250)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                ₹{(wallet?.availableBalance ?? 250).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </div>
               <p className="text-xs text-emerald-700 flex items-center gap-1.5 font-mono">
                 <CheckCircle2 size={13} />

@@ -49,31 +49,53 @@ export const walletService = {
   getQuotas: async (): Promise<QuotaProgress> => {
     try {
       const data = await request<any>('/creator/eligibility');
+      const buckets: any[] = Array.isArray(data?.buckets) ? data.buckets : [];
+      const getApprovedCount = (key: string, legacyField?: number) => {
+        const found = buckets.find((b: any) => b.key === key);
+        if (found && typeof found.approved_count === 'number') {
+          return found.approved_count;
+        }
+        if (typeof legacyField === 'number') {
+          return legacyField;
+        }
+        return 0;
+      };
+      const getTargetCount = (key: string, legacyTarget?: number, fallback = 10) => {
+        const found = buckets.find((b: any) => b.key === key);
+        if (found && typeof found.target_count === 'number' && found.target_count > 0) {
+          return found.target_count;
+        }
+        if (typeof legacyTarget === 'number' && legacyTarget > 0) {
+          return legacyTarget;
+        }
+        return fallback;
+      };
+
       return {
-        userId: data.user_id || 'usr-default',
-        bucket30mCount: data.bucket30mCount || 2,
-        bucket30mTarget: 10,
-        bucket20mCount: data.bucket20mCount || 3,
-        bucket20mTarget: 10,
-        bucket10mCount: data.bucket10mCount || 5,
-        bucket10mTarget: 10,
-        bucket5mCount: data.bucket5mCount || 4,
-        bucket5mTarget: 10,
-        bucket2mCount: data.bucket2mCount || 7,
-        bucket2mTarget: 10
+        userId: data?.user_id || 'usr-default',
+        bucket30mCount: getApprovedCount('30m', data?.bucket30mCount),
+        bucket30mTarget: getTargetCount('30m', data?.bucket30mTarget, 10),
+        bucket20mCount: getApprovedCount('20m', data?.bucket20mCount),
+        bucket20mTarget: getTargetCount('20m', data?.bucket20mTarget, 10),
+        bucket10mCount: getApprovedCount('10m', data?.bucket10mCount),
+        bucket10mTarget: getTargetCount('10m', data?.bucket10mTarget, 10),
+        bucket5mCount: getApprovedCount('5m', data?.bucket5mCount),
+        bucket5mTarget: getTargetCount('5m', data?.bucket5mTarget, 10),
+        bucket2mCount: getApprovedCount('2m', data?.bucket2mCount),
+        bucket2mTarget: getTargetCount('2m', data?.bucket2mTarget, 10)
       };
     } catch {
       return {
         userId: 'usr-default',
-        bucket30mCount: 2,
+        bucket30mCount: 0,
         bucket30mTarget: 10,
-        bucket20mCount: 3,
+        bucket20mCount: 0,
         bucket20mTarget: 10,
-        bucket10mCount: 5,
+        bucket10mCount: 0,
         bucket10mTarget: 10,
-        bucket5mCount: 4,
+        bucket5mCount: 0,
         bucket5mTarget: 10,
-        bucket2mCount: 7,
+        bucket2mCount: 0,
         bucket2mTarget: 10
       };
     }
