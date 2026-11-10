@@ -37,7 +37,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
 
     final List<Widget> pages = [
       HomeScreen(onOpenUpload: _triggerUploadFlow),
-      const ShortsScreen(),
+      ShortsScreen(isActive: isShortsActive),
       const SizedBox.shrink(), // Placeholder for center '+'
       const SubscriptionsScreen(),
       const StudioScreen(),

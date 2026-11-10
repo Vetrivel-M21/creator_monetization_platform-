@@ -8,6 +8,7 @@ import '../../widgets/video_card.dart';
 import '../../widgets/auth_sheet.dart';
 import '../video_detail/video_detail_screen.dart';
 import '../support/support_screen.dart';
+import '../legal/legal_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback onOpenUpload;
@@ -207,6 +208,23 @@ class _HomeScreenState extends State<HomeScreen> {
                                     );
                                   },
                                 ),
+                                ListTile(
+                                  leading: const Icon(Icons.description_outlined, color: AppColors.textSecondary),
+                                  title: const Text('Terms of Service'),
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    LegalScreen.show(context, initialTabIndex: 0);
+                                  },
+                                ),
+                                ListTile(
+                                  leading: const Icon(Icons.privacy_tip_outlined, color: AppColors.textSecondary),
+                                  title: const Text('Privacy Policy'),
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    LegalScreen.show(context, initialTabIndex: 1);
+                                  },
+                                ),
+                                const Divider(),
                                 ListTile(
                                   leading: const Icon(Icons.logout_rounded, color: AppColors.rose),
                                   title: const Text('Log Out', style: TextStyle(color: AppColors.rose)),

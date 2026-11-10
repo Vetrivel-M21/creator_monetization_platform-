@@ -1,3 +1,5 @@
+import '../../core/utils/date_formatter.dart';
+
 class VideoModel {
   static const String serverBase = 'http://10.10.100.251:2085';
 
@@ -61,6 +63,8 @@ class VideoModel {
   });
 
   bool get isShort => videoType == 'short';
+  String get timeAgo => formatTimeAgo(createdAt);
+  String get displayCategory => formatCategoryTitle(category);
 
   VideoModel copyWith({
     bool? isLiked,
@@ -147,9 +151,9 @@ class VideoModel {
       creatorHandle: cName.toLowerCase().replaceAll(' ', '_'),
       creatorAvatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=${json['id'] ?? cName}',
       creatorTier: json['creator_tier']?.toString() ?? 'Silver',
-      viewsCount: (json['views_count'] as num?)?.toInt() ?? 1420,
-      likesCount: (json['likes_count'] as num?)?.toInt() ?? 125,
-      commentsCount: (json['comments_count'] as num?)?.toInt() ?? 14,
+      viewsCount: (json['views_count'] as num?)?.toInt() ?? 0,
+      likesCount: (json['likes_count'] as num?)?.toInt() ?? 0,
+      commentsCount: (json['comments_count'] as num?)?.toInt() ?? 0,
       createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now() : DateTime.now(),
     );
   }
@@ -162,6 +166,7 @@ class CommentModel {
   final String avatar;
   final String text;
   final int likes;
+  final DateTime? createdAt;
   final String timeFormatted;
 
   CommentModel({
@@ -171,18 +176,23 @@ class CommentModel {
     required this.avatar,
     required this.text,
     this.likes = 0,
+    this.createdAt,
     required this.timeFormatted,
   });
 
   factory CommentModel.fromJson(Map<String, dynamic> json) {
+    final created = json['created_at'] != null
+        ? DateTime.tryParse(json['created_at'].toString())
+        : null;
     return CommentModel(
       id: json['id']?.toString() ?? '',
       videoId: json['video_id']?.toString() ?? '',
       author: json['user_name']?.toString() ?? 'Community Member',
       avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=${json['id'] ?? 'user'}',
       text: json['content']?.toString() ?? '',
-      likes: 4,
-      timeFormatted: '2h ago',
+      likes: (json['likes'] as num?)?.toInt() ?? (json['likes_count'] as num?)?.toInt() ?? 0,
+      createdAt: created,
+      timeFormatted: formatTimeAgo(created),
     );
   }
 }

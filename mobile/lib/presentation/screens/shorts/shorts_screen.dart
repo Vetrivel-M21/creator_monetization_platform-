@@ -10,13 +10,14 @@ import '../../widgets/comments_sheet.dart';
 import '../../widgets/auth_required_dialog.dart';
 
 class ShortsScreen extends StatefulWidget {
-  const ShortsScreen({super.key});
+  final bool isActive;
+  const ShortsScreen({super.key, this.isActive = true});
 
   @override
   State<ShortsScreen> createState() => _ShortsScreenState();
 }
 
-class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMixin {
+class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   final ApiService _api = ApiService();
   final PageController _pageController = PageController();
 
@@ -48,6 +49,7 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _discAnimController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 4),
@@ -57,7 +59,36 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
   }
 
   @override
+  void didUpdateWidget(ShortsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive != oldWidget.isActive) {
+      final controller = _controllers[_currentIndex];
+      if (widget.isActive) {
+        if (controller != null && controller.value.isInitialized) {
+          controller.play();
+          _discAnimController.repeat();
+        }
+      } else {
+        controller?.pause();
+        _discAnimController.stop();
+      }
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _controllers[_currentIndex]?.pause();
+      _discAnimController.stop();
+    } else if (state == AppLifecycleState.resumed && widget.isActive) {
+      _controllers[_currentIndex]?.play();
+      _discAnimController.repeat();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _discAnimController.dispose();
     _pageController.dispose();
     for (final controller in _controllers.values) {
@@ -89,14 +120,16 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
     if (_controllers.containsKey(index)) return _controllers[index];
 
     final video = _shorts[index];
-    final uri = Uri.parse(video.videoUrl);
+    final streamUrl = video.videoUrl.isNotEmpty ? video.videoUrl : video.hlsUrl;
+    if (streamUrl.isEmpty) return null;
+    final uri = Uri.parse(streamUrl);
     final controller = VideoPlayerController.networkUrl(uri);
 
     controller.initialize().then((_) {
       if (mounted) {
         controller.setLooping(true);
         controller.setVolume(_isMuted ? 0.0 : 1.0);
-        if (index == _currentIndex) {
+        if (index == _currentIndex && widget.isActive) {
           controller.play();
         }
         setState(() {});
@@ -288,8 +321,6 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
       _isScrubbing = true;
       _scrubProgress = progress;
     });
-    final target = controller.value.duration * progress;
-    controller.seekTo(target);
   }
 
   void _onScrubUpdate(double dx, double width) {
@@ -300,11 +331,14 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
     setState(() {
       _scrubProgress = progress;
     });
-    final target = controller.value.duration * progress;
-    controller.seekTo(target);
   }
 
   void _onScrubEnd() {
+    final controller = _controllers[_currentIndex];
+    if (controller != null && controller.value.isInitialized) {
+      final target = controller.value.duration * _scrubProgress;
+      controller.seekTo(target);
+    }
     setState(() {
       _isScrubbing = false;
     });
@@ -384,6 +418,15 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
                     video.thumbnailUrl,
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => Container(color: Colors.black87),
+                  ),
+
+                // Buffering Indicator
+                if (isInitialized && controller.value.isBuffering)
+                  const Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.primary,
+                      strokeWidth: 2.5,
+                    ),
                   ),
 
                 // Gradient Vignette for UI readability

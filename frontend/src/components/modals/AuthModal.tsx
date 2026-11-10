@@ -22,6 +22,8 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAuthSuccess: (token: string, user: UserType) => void;
+  onOpenTerms?: () => void;
+  onOpenPrivacy?: () => void;
 }
 
 type AuthView = 'welcome' | 'email_otp' | 'register' | 'register_otp' | 'password_login';
@@ -30,6 +32,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   onClose,
   onAuthSuccess,
+  onOpenTerms,
+  onOpenPrivacy,
 }) => {
   const [view, setView] = useState<AuthView>('welcome');
 
@@ -470,6 +474,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     Sign in here
                   </button>
                 </div>
+
+                <div className="pt-2 text-[10.5px] text-[#94A3B8] leading-tight">
+                  By continuing, you agree to our{' '}
+                  <button
+                    type="button"
+                    onClick={onOpenTerms}
+                    className="text-[#2563EB] underline hover:text-[#1D4ED8] cursor-pointer"
+                  >
+                    Terms of Service
+                  </button>
+                  {' '}and{' '}
+                  <button
+                    type="button"
+                    onClick={onOpenPrivacy}
+                    className="text-[#2563EB] underline hover:text-[#1D4ED8] cursor-pointer"
+                  >
+                    Privacy Policy
+                  </button>.
+                </div>
               </div>
             </div>
           )}
@@ -687,18 +710,39 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </button>
               </form>
 
-              <div className="text-center text-xs text-[#64748B] pt-1">
-                Already registered?{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setErrorMessage(null);
-                    setView('password_login');
-                  }}
-                  className="text-[#2563EB] font-semibold underline hover:text-[#1D4ED8] cursor-pointer"
-                >
-                  Sign in with password
-                </button>
+              <div className="text-center text-xs text-[#64748B] pt-1 space-y-2">
+                <div>
+                  Already registered?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErrorMessage(null);
+                      setView('password_login');
+                    }}
+                    className="text-[#2563EB] font-semibold underline hover:text-[#1D4ED8] cursor-pointer"
+                  >
+                    Sign in with password
+                  </button>
+                </div>
+
+                <div className="text-[10.5px] text-[#94A3B8] leading-tight">
+                  By creating an account, you agree to our{' '}
+                  <button
+                    type="button"
+                    onClick={onOpenTerms}
+                    className="text-[#2563EB] underline hover:text-[#1D4ED8] cursor-pointer"
+                  >
+                    Terms of Service
+                  </button>
+                  {' '}and{' '}
+                  <button
+                    type="button"
+                    onClick={onOpenPrivacy}
+                    className="text-[#2563EB] underline hover:text-[#1D4ED8] cursor-pointer"
+                  >
+                    Privacy Policy
+                  </button>.
+                </div>
               </div>
             </div>
           )}

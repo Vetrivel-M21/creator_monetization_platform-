@@ -10,6 +10,8 @@ interface SidebarProps {
   onOpenAuth: () => void;
   onLogout: () => void;
   onOpenSupport?: () => void;
+  onOpenTerms?: () => void;
+  onOpenPrivacy?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -20,6 +22,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenAuth,
   onLogout,
   onOpenSupport,
+  onOpenTerms,
+  onOpenPrivacy,
 }) => {
   const navItems = [
     { id: 'discover' as MainNavTab, label: 'Explore & Watch', icon: Film },
@@ -193,6 +197,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <ArrowRight size={13} className="text-[#64748B]" />
           </button>
         )}
+
+        {/* Legal Links */}
+        <div className="pt-1 px-1 flex items-center justify-center gap-2 text-[10px] text-[#94A3B8]">
+          <button
+            type="button"
+            onClick={onOpenTerms}
+            className="hover:text-[#2563EB] transition-colors cursor-pointer"
+          >
+            Terms of Service
+          </button>
+          <span>•</span>
+          <button
+            type="button"
+            onClick={onOpenPrivacy}
+            className="hover:text-[#2563EB] transition-colors cursor-pointer"
+          >
+            Privacy Policy
+          </button>
+        </div>
       </div>
     </aside>
   );

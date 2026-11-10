@@ -6,9 +6,10 @@ interface KYCModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  onOpenTerms?: () => void;
 }
 
-export const KYCModal: React.FC<KYCModalProps> = ({ isOpen, onClose, onSuccess }) => {
+export const KYCModal: React.FC<KYCModalProps> = ({ isOpen, onClose, onSuccess, onOpenTerms }) => {
   const [panNumber, setPanNumber] = useState('');
   const [aadhaarNumber, setAadhaarNumber] = useState('');
   const [bankAccount, setBankAccount] = useState('');
@@ -161,7 +162,17 @@ export const KYCModal: React.FC<KYCModalProps> = ({ isOpen, onClose, onSuccess }
                   className="mt-0.5 rounded border-[#CBD5E1] accent-[#2563EB] text-[#2563EB] focus:ring-0"
                 />
                 <span className="leading-relaxed">
-                  I certify that all uploaded content is 100% human-authored and compliant with ARMSS Entertainment anti-AI policies.
+                  I certify that all uploaded content is 100% human-authored and compliant with ARMSS Entertainment{' '}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onOpenTerms?.();
+                    }}
+                    className="text-[#2563EB] underline font-semibold hover:text-[#1D4ED8]"
+                  >
+                    Anti-AI Policies and Creator Payout Terms
+                  </button>.
                 </span>
               </label>
             </div>

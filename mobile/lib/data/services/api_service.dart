@@ -5,6 +5,7 @@ import '../models/category_model.dart';
 import '../models/video_model.dart';
 import '../models/studio_model.dart';
 import '../models/user_model.dart';
+import '../../core/utils/date_formatter.dart';
 
 class ApiService {
   // Workstation private Wi-Fi IP for seamless mobile device connectivity
@@ -174,6 +175,7 @@ class ApiService {
       }
     } catch (_) {}
 
+    final now = DateTime.now();
     return [
       CommentModel(
         id: 'cmt-1',
@@ -182,7 +184,8 @@ class ApiService {
         avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=anand',
         text: 'The explanation on duration buckets and adaptive CMAF streaming is top tier!',
         likes: 18,
-        timeFormatted: '15m ago',
+        createdAt: now.subtract(const Duration(minutes: 15)),
+        timeFormatted: formatTimeAgo(now.subtract(const Duration(minutes: 15))),
       ),
       CommentModel(
         id: 'cmt-2',
@@ -191,7 +194,8 @@ class ApiService {
         avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=sara',
         text: 'Glad to see a platform paying creators for authentic human-crafted tutorials.',
         likes: 9,
-        timeFormatted: '1h ago',
+        createdAt: now.subtract(const Duration(hours: 1)),
+        timeFormatted: formatTimeAgo(now.subtract(const Duration(hours: 1))),
       ),
       CommentModel(
         id: 'cmt-3',
@@ -200,7 +204,8 @@ class ApiService {
         avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=karthik',
         text: 'Master Movie trailer breakdown when? Great video overall!',
         likes: 4,
-        timeFormatted: '2h ago',
+        createdAt: now.subtract(const Duration(hours: 2)),
+        timeFormatted: formatTimeAgo(now.subtract(const Duration(hours: 2))),
       ),
     ];
   }
@@ -400,12 +405,112 @@ class ApiService {
     return null;
   }
 
-  Future<CreatorStudioModel> fetchCreatorStudio() async {
+  Future<Map<String, dynamic>?> fetchUserProfile(String token) async {
+    try {
+      final res = await http
+          .get(Uri.parse('$baseUrl/user/profile'), headers: _headers(token))
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> fetchEligibility(String token, [String? userId]) async {
+    try {
+      final uri = Uri.parse('$baseUrl/creator/eligibility');
+      final res = await http
+          .get(uri, headers: _headers(token))
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> fetchKyc(String token) async {
+    try {
+      final res = await http
+          .get(Uri.parse('$baseUrl/kyc'), headers: _headers(token))
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> fetchWallet(String token, String userId) async {
+    try {
+      final res = await http
+          .get(Uri.parse('$baseUrl/wallet/$userId'), headers: _headers(token))
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<Map<String, dynamic>> requestWithdrawal({
+    required double amount,
+    required String token,
+  }) async {
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$baseUrl/wallet/withdraw'),
+            headers: _headers(token),
+            body: jsonEncode({'amount': amount}),
+          )
+          .timeout(const Duration(seconds: 8));
+
+      final data = jsonDecode(res.body);
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Payout request submitted successfully!',
+        };
+      } else {
+        return {
+          'success': false,
+          'error': data['error'] ?? 'Withdrawal failed. (Status ${res.statusCode})',
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'error': 'Network connection error: $e'};
+    }
+  }
+
+  Future<CreatorStudioModel> fetchCreatorStudio([String? token, UserModel? user]) async {
+    if (token != null && token.isNotEmpty && user != null) {
+      try {
+        final results = await Future.wait([
+          fetchEligibility(token, user.id),
+          fetchKyc(token),
+          fetchWallet(token, user.id),
+        ]);
+
+        final eligibility = results[0];
+        final kycData = results[1];
+        final walletData = results[2];
+
+        return CreatorStudioModel.fromBackend(
+          user: user,
+          eligibility: eligibility,
+          kycData: kycData,
+          walletData: walletData,
+        );
+      } catch (_) {}
+    }
     return CreatorStudioModel.sample();
   }
 
   Future<List<VideoModel>> fetchHomeVideos() => fetchLandscapeVideos();
-  Future<CreatorStudioModel> fetchStudioData() => fetchCreatorStudio();
+  Future<CreatorStudioModel> fetchStudioData([String? token, UserModel? user]) =>
+      fetchCreatorStudio(token, user);
 
   static List<VideoModel> getMockVideos() {
     return const [];

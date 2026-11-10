@@ -72,13 +72,15 @@ class _CommentsSheetState extends State<CommentsSheet> {
     final userId = currentUser?.id ?? 'guest';
 
     // Optimistic local add
+    final now = DateTime.now();
     final optimisticComment = CommentModel(
-      id: 'cmt-${DateTime.now().millisecondsSinceEpoch}',
+      id: 'cmt-${now.millisecondsSinceEpoch}',
       videoId: widget.videoId,
       author: userName,
       avatar: currentUser?.displayAvatar ?? 'https://api.dicebear.com/7.x/bottts/svg?seed=$userId',
       text: text,
       likes: 0,
+      createdAt: now,
       timeFormatted: 'Just now',
     );
 

@@ -206,7 +206,7 @@ class VideoCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        '${video.creatorName} • ${video.viewsCount > 1000 ? "${(video.viewsCount / 1000).toStringAsFixed(1)}K" : video.viewsCount} views • 3 hours ago',
+                        '${video.creatorName} • ${video.viewsCount > 1000 ? "${(video.viewsCount / 1000).toStringAsFixed(1)}K" : video.viewsCount} views • ${video.timeAgo}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../data/services/auth_service.dart';
+import '../screens/legal/legal_screen.dart';
 
 class AuthSheet extends StatefulWidget {
   const AuthSheet({super.key});
@@ -300,6 +301,41 @@ class _AuthSheetState extends State<AuthSheet> with SingleTickerProviderStateMix
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
+              ),
+
+              const SizedBox(height: 14),
+              // Terms & Privacy Agreement Notice
+              Wrap(
+                alignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  const Text('By continuing, you agree to our ', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                  GestureDetector(
+                    onTap: () => LegalScreen.show(context, initialTabIndex: 0),
+                    child: const Text(
+                      'Terms of Service',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                  const Text(' and ', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                  GestureDetector(
+                    onTap: () => LegalScreen.show(context, initialTabIndex: 1),
+                    child: const Text(
+                      'Privacy Policy',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

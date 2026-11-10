@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:creator_monetization_app/core/theme/app_colors.dart';
 import 'package:creator_monetization_app/data/models/studio_model.dart';
 import 'package:creator_monetization_app/data/services/api_service.dart';
+import 'package:creator_monetization_app/data/services/auth_service.dart';
 import '../support/support_screen.dart';
+import '../legal/legal_screen.dart';
 
 class StudioScreen extends StatefulWidget {
   const StudioScreen({super.key});
@@ -22,10 +24,16 @@ class _StudioScreenState extends State<StudioScreen> {
   }
 
   void _loadStudio() {
-    _studioFuture = _apiService.fetchStudioData();
+    final auth = AuthService.instance;
+    _studioFuture = _apiService.fetchStudioData(auth.token, auth.currentUser);
   }
 
-  void _showRequestPayoutDialog(BuildContext context, double balance) {
+  void _showRequestPayoutDialog(BuildContext context, CreatorStudioModel studio) {
+    final balance = studio.availableBalance;
+    final bankInfo = studio.kycBank.isNotEmpty
+        ? '${studio.kycBank} •••• ${studio.kycAccount.length > 4 ? studio.kycAccount.substring(studio.kycAccount.length - 4) : studio.kycAccount}'
+        : 'Bank Account •••• 4021';
+    final kycTag = studio.isKycVerified ? '(KYC Verified)' : '(KYC Pending Approval)';
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -124,9 +132,9 @@ class _StudioScreenState extends State<StudioScreen> {
                 ),
               ),
               const SizedBox(height: 14),
-              const Text(
-                'Direct deposit to: HDFC Bank •••• 4021 (KYC Verified)',
-                style: TextStyle(
+              Text(
+                'Direct deposit to: $bankInfo $kycTag',
+                style: const TextStyle(
                   fontSize: 12,
                   color: AppColors.mutedText,
                 ),
@@ -135,16 +143,64 @@ class _StudioScreenState extends State<StudioScreen> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () {
+                  onPressed: () async {
+                    final auth = AuthService.instance;
+                    if (auth.token == null || auth.token!.isEmpty) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Please log in to submit a payout request.')),
+                      );
+                      return;
+                    }
+                    if (!studio.isKycVerified) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Bank KYC must be verified before requesting bank payouts.'),
+                          backgroundColor: AppColors.rose,
+                        ),
+                      );
+                      return;
+                    }
+                    if (balance < 500) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Minimum withdrawal amount is ₹500.00'),
+                          backgroundColor: AppColors.rose,
+                        ),
+                      );
+                      return;
+                    }
+
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Payout request of ₹${balance.toStringAsFixed(2)} submitted successfully!',
-                        ),
-                        backgroundColor: AppColors.successGreen,
-                      ),
+                      const SnackBar(content: Text('Submitting bank withdrawal request...')),
                     );
+
+                    final result = await _apiService.requestWithdrawal(
+                      amount: balance,
+                      token: auth.token!,
+                    );
+
+                    if (mounted) {
+                      if (result['success'] == true) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(result['message'] as String? ?? 'Payout request submitted successfully!'),
+                            backgroundColor: AppColors.successGreen,
+                          ),
+                        );
+                        setState(() => _loadStudio());
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(result['error'] as String? ?? 'Payout request failed.'),
+                            backgroundColor: AppColors.rose,
+                          ),
+                        );
+                      }
+                    }
                   },
                   icon: const Icon(Icons.check_circle_outline_rounded, size: 20),
                   label: const Text(
@@ -229,12 +285,41 @@ class _StudioScreenState extends State<StudioScreen> {
                 ],
               ),
               const SizedBox(height: 20),
-              _buildKycRow('Legal Name', 'Vetrivel M'),
-              _buildKycRow('KYC Status', 'Verified & Approved', isSuccess: true),
-              _buildKycRow('ID Verification', 'Aadhaar •••• 9812'),
-              _buildKycRow('Tax PAN', 'ABCDE••••F'),
-              _buildKycRow('Bank Account', 'HDFC Bank (IFSC: HDFC0001234)'),
+              _buildKycRow('Legal Name', studio.kycHolderName.isNotEmpty ? studio.kycHolderName : studio.creatorName),
+              _buildKycRow(
+                'KYC Status',
+                studio.isKycVerified ? 'Verified & Approved' : 'Pending Verification',
+                isSuccess: studio.isKycVerified,
+              ),
+              _buildKycRow(
+                'ID Verification',
+                studio.kycAadhaar.isNotEmpty
+                    ? (studio.kycAadhaar.length >= 4 ? 'Aadhaar •••• ${studio.kycAadhaar.substring(studio.kycAadhaar.length - 4)}' : studio.kycAadhaar)
+                    : 'Aadhaar •••• 9812',
+              ),
+              _buildKycRow('Tax PAN', studio.kycPan.isNotEmpty ? studio.kycPan : 'ABCDE••••F'),
+              _buildKycRow(
+                'Bank Account',
+                studio.kycBank.isNotEmpty
+                    ? '${studio.kycBank} (IFSC: ${studio.kycIfsc})'
+                    : 'HDFC Bank (IFSC: HDFC0001234)',
+              ),
               const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    LegalScreen.show(context, initialTabIndex: 0);
+                  },
+                  icon: const Icon(Icons.shield_outlined, size: 16, color: AppColors.primary),
+                  label: const Text(
+                    'View Creator Terms & Privacy Policy',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
@@ -629,7 +714,7 @@ class _StudioScreenState extends State<StudioScreen> {
             children: [
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () => _showRequestPayoutDialog(context, studio.availableBalance),
+                  onPressed: () => _showRequestPayoutDialog(context, studio),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: AppColors.primaryAccent,

@@ -46,16 +46,17 @@ func UploadVideo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	category := models.VideoCategory(strings.TrimSpace(r.FormValue("category")))
-	validCategories := map[models.VideoCategory]bool{
-		models.CatSelf:      true,
-		models.CatPromotion: true,
-		models.CatProduct:   true,
-		models.CatBusiness:  true,
+	categoryStr := strings.TrimSpace(r.FormValue("category"))
+	if categoryStr == "" {
+		categoryStr = string(models.CatPromotion)
+	} else {
+		var catSlug string
+		err := database.DB.QueryRowContext(r.Context(), "SELECT slug FROM categories WHERE slug = ? OR id = ?", categoryStr, categoryStr).Scan(&catSlug)
+		if err == nil && catSlug != "" {
+			categoryStr = catSlug
+		}
 	}
-	if !validCategories[category] {
-		category = models.CatPromotion
-	}
+	category := models.VideoCategory(categoryStr)
 
 	description := strings.TrimSpace(r.FormValue("description"))
 

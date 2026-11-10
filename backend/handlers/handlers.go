@@ -419,9 +419,9 @@ func ListVideos(w http.ResponseWriter, r *http.Request) {
 		query += " AND status = 'approved'"
 	}
 
-	if cat != "" && cat != "all" {
+	if cat != "" && strings.ToLower(cat) != "all" {
 		query += " AND category = ?"
-		args = append(args, cat)
+		args = append(args, strings.ToLower(cat))
 	}
 
 	videoType := r.URL.Query().Get("video_type")
@@ -489,8 +489,10 @@ func CreateVideo(w http.ResponseWriter, r *http.Request) {
 		models.CatProduct:   true,
 		models.CatBusiness:  true,
 	}
-	if !validCategories[req.Category] {
-		http.Error(w, `{"error":"invalid category; must be self, promotion, product, or business"}`, http.StatusBadRequest)
+	var catExists int
+	_ = database.DB.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM categories WHERE slug = ? OR id = ?", req.Category, req.Category).Scan(&catExists)
+	if !validCategories[req.Category] && catExists == 0 {
+		http.Error(w, `{"error":"invalid category; does not exist on platform"}`, http.StatusBadRequest)
 		return
 	}
 

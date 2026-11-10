@@ -15,6 +15,7 @@ import { TheaterModal } from './components/modals/TheaterModal';
 import { KYCModal } from './components/modals/KYCModal';
 import { WithdrawModal } from './components/modals/WithdrawModal';
 import { SupportChatModal } from './components/modals/SupportChatModal';
+import { LegalModal } from './components/modals/LegalModal';
 import { AuthRequiredModal, type AuthGateAction } from './components/modals/AuthRequiredModal';
 import { videoService } from './services/videoService';
 import { walletService } from './services/walletService';
@@ -63,6 +64,13 @@ export function App() {
   const [isKYCOpen, setIsKYCOpen] = useState(false);
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
+  const [legalModalState, setLegalModalState] = useState<{
+    isOpen: boolean;
+    tab: 'terms' | 'privacy';
+  }>({
+    isOpen: false,
+    tab: 'terms',
+  });
   const [theaterVideo, setTheaterVideo] = useState<Video | null>(null);
 
   // Active Comment Drawer
@@ -293,6 +301,8 @@ export function App() {
         onOpenAuth={() => setIsAuthOpen(true)}
         onLogout={handleLogout}
         onOpenSupport={() => (user ? setIsSupportOpen(true) : setIsAuthOpen(true))}
+        onOpenTerms={() => setLegalModalState({ isOpen: true, tab: 'terms' })}
+        onOpenPrivacy={() => setLegalModalState({ isOpen: true, tab: 'privacy' })}
       />
 
       {/* Main Center Content Column (Header + Dynamic View) */}
@@ -402,6 +412,8 @@ export function App() {
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
         onAuthSuccess={handleAuthSuccess}
+        onOpenTerms={() => setLegalModalState({ isOpen: true, tab: 'terms' })}
+        onOpenPrivacy={() => setLegalModalState({ isOpen: true, tab: 'privacy' })}
       />
 
       <UploadModal
@@ -429,6 +441,7 @@ export function App() {
       <KYCModal
         isOpen={isKYCOpen}
         onClose={() => setIsKYCOpen(false)}
+        onOpenTerms={() => setLegalModalState({ isOpen: true, tab: 'terms' })}
         onSuccess={() => {
           showToast('Bank KYC verified! Direct payouts enabled.');
           loadWalletAndQuotas();
@@ -466,6 +479,12 @@ export function App() {
         details={authGateState.details}
         onClose={() => setAuthGateState((prev) => ({ ...prev, isOpen: false }))}
         onLogin={() => setIsAuthOpen(true)}
+      />
+
+      <LegalModal
+        isOpen={legalModalState.isOpen}
+        onClose={() => setLegalModalState((prev) => ({ ...prev, isOpen: false }))}
+        initialTab={legalModalState.tab}
       />
     </div>
   );

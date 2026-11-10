@@ -17,12 +17,14 @@ class VideoDetailScreen extends StatefulWidget {
   State<VideoDetailScreen> createState() => _VideoDetailScreenState();
 }
 
-class _VideoDetailScreenState extends State<VideoDetailScreen> {
+class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindingObserver {
   final ApiService _api = ApiService();
   late VideoModel _currentVideo;
   VideoPlayerController? _playerController;
 
   bool _isPlayerInitialized = false;
+  bool _hasPlayerError = false;
+  double? _dragValue;
   bool _showControls = true;
   bool _isMuted = false;
   bool _isExpandedDescription = false;
@@ -32,6 +34,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _currentVideo = widget.video;
     _initializePlayer();
     _loadRelatedVideos();
@@ -39,27 +42,64 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _playerController?.pause();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _playerController?.dispose();
     super.dispose();
   }
 
   void _initializePlayer() {
-    final uri = Uri.parse(_currentVideo.videoUrl);
-    _playerController = VideoPlayerController.networkUrl(uri)
-      ..initialize().then((_) {
-        if (mounted) {
-          setState(() {
-            _isPlayerInitialized = true;
-          });
-          _playerController?.play();
-        }
-      }).catchError((_) {
-        // Fallback gracefully if stream fails to load
-      });
+    _playerController?.dispose();
+    _playerController = null;
+    setState(() {
+      _isPlayerInitialized = false;
+      _hasPlayerError = false;
+    });
 
-    _playerController?.addListener(() {
-      if (mounted) setState(() {});
+    final primaryUrl = _currentVideo.videoUrl.isNotEmpty ? _currentVideo.videoUrl : _currentVideo.hlsUrl;
+    if (primaryUrl.isEmpty) {
+      setState(() => _hasPlayerError = true);
+      return;
+    }
+
+    _loadStream(primaryUrl, fallbackUrl: _currentVideo.hlsUrl != primaryUrl ? _currentVideo.hlsUrl : null);
+  }
+
+  void _loadStream(String url, {String? fallbackUrl}) {
+    final uri = Uri.parse(url);
+    final controller = VideoPlayerController.networkUrl(uri);
+    _playerController = controller;
+
+    controller.initialize().then((_) {
+      if (mounted) {
+        setState(() {
+          _isPlayerInitialized = true;
+          _hasPlayerError = false;
+        });
+        controller.play();
+      }
+    }).catchError((err) {
+      if (fallbackUrl != null && fallbackUrl.isNotEmpty) {
+        _loadStream(fallbackUrl);
+      } else if (mounted) {
+        setState(() {
+          _hasPlayerError = true;
+          _isPlayerInitialized = false;
+        });
+      }
+    });
+
+    controller.addListener(() {
+      if (mounted && _dragValue == null) {
+        setState(() {});
+      }
     });
   }
 
@@ -209,6 +249,33 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                         ),
                       ),
 
+                    // Error Overlay or Buffering Spinner
+                    if (_hasPlayerError)
+                      Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.error_outline_rounded, color: Colors.white70, size: 36),
+                            const SizedBox(height: 8),
+                            const Text('Failed to load video stream', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                            const SizedBox(height: 8),
+                            ElevatedButton(
+                              onPressed: _initializePlayer,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                minimumSize: Size.zero,
+                              ),
+                              child: const Text('Retry', style: TextStyle(color: Colors.white, fontSize: 12)),
+                            ),
+                          ],
+                        ),
+                      )
+                    else if (!_isPlayerInitialized || (_playerController != null && _playerController!.value.isBuffering))
+                      const Center(
+                        child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2.5),
+                      ),
+
                     // Tap Detector for Controls
                     GestureDetector(
                       onTap: () => setState(() => _showControls = !_showControls),
@@ -274,7 +341,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  '${_formatDuration(pos)} / ${_formatDuration(dur)}',
+                                  '${_formatDuration(_dragValue != null ? dur * _dragValue! : pos)} / ${_formatDuration(dur)}',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 11,
@@ -308,10 +375,17 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                                 thumbColor: AppColors.primary,
                               ),
                               child: Slider(
-                                value: (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0),
-                                onChanged: (value) {
-                                  final target = dur * value;
+                                value: _dragValue ?? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0),
+                                onChangeStart: (val) {
+                                  setState(() => _dragValue = val);
+                                },
+                                onChanged: (val) {
+                                  setState(() => _dragValue = val);
+                                },
+                                onChangeEnd: (val) {
+                                  final target = dur * val;
                                   _playerController?.seekTo(target);
+                                  setState(() => _dragValue = null);
                                 },
                               ),
                             ),
@@ -344,7 +418,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '${_currentVideo.viewsCount > 1000 ? "${(_currentVideo.viewsCount / 1000).toStringAsFixed(1)}K" : _currentVideo.viewsCount} views • Clean duration: ${_currentVideo.durationFormatted} • Category: ${_currentVideo.category}',
+                    '${_currentVideo.viewsCount > 1000 ? "${(_currentVideo.viewsCount / 1000).toStringAsFixed(1)}K" : _currentVideo.viewsCount} views • ${_currentVideo.timeAgo} • ${_currentVideo.displayCategory} • ${_currentVideo.durationFormatted}',
                     style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                   ),
 
