@@ -107,6 +107,46 @@ func SendEmailOTP(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusOK, resp)
 }
 
+func parseDBTime(v interface{}) time.Time {
+	if v == nil {
+		return time.Now()
+	}
+	switch val := v.(type) {
+	case time.Time:
+		return val
+	case []byte:
+		return parseDBTimeString(string(val))
+	case string:
+		return parseDBTimeString(val)
+	}
+	return time.Now()
+}
+
+func parseDBTimeString(val string) time.Time {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return time.Now()
+	}
+	if idx := strings.Index(val, " m="); idx != -1 {
+		val = val[:idx]
+	}
+	val = strings.TrimSpace(val)
+	layouts := []string{
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05.999999999 -07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+		time.RFC3339Nano,
+		time.RFC3339,
+	}
+	for _, l := range layouts {
+		if t, err := time.Parse(l, val); err == nil {
+			return t
+		}
+	}
+	return time.Now()
+}
+
 func VerifyEmailOTP(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Email string `json:"email"`
@@ -130,9 +170,25 @@ func VerifyEmailOTP(w http.ResponseWriter, r *http.Request) {
 	otpStore[email] = record
 	otpMutex.Unlock()
 
-	// Check if user already exists
+	// 1. Explicitly check whether this user already exists in users table
+	var userCount int
+	_ = database.DB.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM users WHERE email = ?", email).Scan(&userCount)
+	if userCount == 0 {
+		// Truly a new user: verified, proceed to channel setup & registration
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"status":      "success",
+			"is_new_user": true,
+			"email":       email,
+			"message":     "Email verified successfully. Complete channel profile.",
+		})
+		return
+	}
+
+	// 2. Existing user: scan and login directly
 	var u models.User
-	var silverPaidInt int
+	var silverPaidInt, activeInt int
+	var silverPaidAtRaw, createdAtRaw, updatedAtRaw interface{}
+
 	err := database.DB.QueryRowContext(r.Context(), `
 		SELECT id, email, COALESCE(mobile, ''), COALESCE(age, 0), name, 
 		       COALESCE(channel_name, ''), COALESCE(channel_logo, ''), COALESCE(channel_description, ''),
@@ -142,33 +198,35 @@ func VerifyEmailOTP(w http.ResponseWriter, r *http.Request) {
 	`, email).Scan(
 		&u.ID, &u.Email, &u.Mobile, &u.Age, &u.Name,
 		&u.ChannelName, &u.ChannelLogo, &u.ChannelDescription,
-		&u.Role, &u.Tier, &u.IsActive, &u.WalletAmount, &silverPaidInt, &u.SilverRewardPaidAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.Role, &u.Tier, &activeInt, &u.WalletAmount, &silverPaidInt, &silverPaidAtRaw, &createdAtRaw, &updatedAtRaw,
 	)
-	u.SilverRewardPaid = silverPaidInt == 1
 
-	if err == nil {
-		// Existing user: direct login
-		if !u.IsActive {
-			http.Error(w, `{"error":"this account has been deactivated"}`, http.StatusForbidden)
-			return
-		}
-		token, _ := middleware.GenerateToken(&u)
-		logger.LogAction(u.ID, "login_otp_success", u.ID, fmt.Sprintf("Logged in via OTP (%s)", email))
-		jsonResponse(w, http.StatusOK, map[string]interface{}{
-			"status":      "success",
-			"is_new_user": false,
-			"token":       token,
-			"user":        u,
-		})
+	if err != nil {
+		logger.ErrorLogger.Printf("[VerifyEmailOTP] Error scanning existing user %s: %v", email, err)
+		http.Error(w, `{"error":"failed to load user account"}`, http.StatusInternalServerError)
 		return
 	}
 
-	// New user: verified, proceed to name and password
+	u.IsActive = (activeInt == 1)
+	u.SilverRewardPaid = (silverPaidInt == 1)
+	u.CreatedAt = parseDBTime(createdAtRaw)
+	u.UpdatedAt = parseDBTime(updatedAtRaw)
+	if silverPaidAtRaw != nil {
+		t := parseDBTime(silverPaidAtRaw)
+		u.SilverRewardPaidAt = &t
+	}
+
+	if !u.IsActive {
+		http.Error(w, `{"error":"this account has been deactivated"}`, http.StatusForbidden)
+		return
+	}
+	token, _ := middleware.GenerateToken(&u)
+	logger.LogAction(u.ID, "login_otp_success", u.ID, fmt.Sprintf("Logged in via OTP (%s)", email))
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
 		"status":      "success",
-		"is_new_user": true,
-		"email":       email,
-		"message":     "Email verified successfully. Complete channel profile.",
+		"is_new_user": false,
+		"token":       token,
+		"user":        u,
 	})
 }
 
@@ -198,7 +256,10 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 	var u models.User
 	var storedHash string
-	var silverPaidInt, goldPaidInt, diamondPaidInt int
+	var silverPaidInt, goldPaidInt, diamondPaidInt, activeInt int
+	var silverPaidAtRaw, goldPaidAtRaw, diamondPaidAtRaw interface{}
+	var createdAtRaw, updatedAtRaw interface{}
+
 	err := database.DB.QueryRowContext(r.Context(), `
 		SELECT id, email, COALESCE(mobile, ''), COALESCE(age, 0), password_hash, name, 
 		       COALESCE(channel_name, ''), COALESCE(channel_logo, ''), COALESCE(channel_description, ''),
@@ -213,20 +274,37 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	`, identifier, identifier).Scan(
 		&u.ID, &u.Email, &u.Mobile, &u.Age, &storedHash, &u.Name,
 		&u.ChannelName, &u.ChannelLogo, &u.ChannelDescription,
-		&u.Role, &u.Tier, &u.IsActive, &u.AccountStatus, &u.SuspensionReason,
+		&u.Role, &u.Tier, &activeInt, &u.AccountStatus, &u.SuspensionReason,
 		&u.RejectionReason, &u.WalletAmount, 
-		&silverPaidInt, &u.SilverRewardPaidAt,
-		&goldPaidInt, &u.GoldRewardPaidAt,
-		&diamondPaidInt, &u.DiamondRewardPaidAt,
-		&u.CreatedAt, &u.UpdatedAt,
+		&silverPaidInt, &silverPaidAtRaw,
+		&goldPaidInt, &goldPaidAtRaw,
+		&diamondPaidInt, &diamondPaidAtRaw,
+		&createdAtRaw, &updatedAtRaw,
 	)
-	u.SilverRewardPaid = silverPaidInt == 1
-	u.GoldRewardPaid = goldPaidInt == 1
-	u.DiamondRewardPaid = diamondPaidInt == 1
 
 	if err != nil {
+		logger.ErrorLogger.Printf("[Login] Error looking up user %s: %v", identifier, err)
 		http.Error(w, `{"error":"invalid credentials"}`, http.StatusUnauthorized)
 		return
+	}
+
+	u.IsActive = (activeInt == 1)
+	u.SilverRewardPaid = (silverPaidInt == 1)
+	u.GoldRewardPaid = (goldPaidInt == 1)
+	u.DiamondRewardPaid = (diamondPaidInt == 1)
+	u.CreatedAt = parseDBTime(createdAtRaw)
+	u.UpdatedAt = parseDBTime(updatedAtRaw)
+	if silverPaidAtRaw != nil {
+		t := parseDBTime(silverPaidAtRaw)
+		u.SilverRewardPaidAt = &t
+	}
+	if goldPaidAtRaw != nil {
+		t := parseDBTime(goldPaidAtRaw)
+		u.GoldRewardPaidAt = &t
+	}
+	if diamondPaidAtRaw != nil {
+		t := parseDBTime(diamondPaidAtRaw)
+		u.DiamondRewardPaidAt = &t
 	}
 
 	if bcryptErr := bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(req.Password)); bcryptErr != nil {

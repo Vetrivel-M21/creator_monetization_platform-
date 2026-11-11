@@ -355,6 +355,8 @@ func createTables(driver string) error {
 	_, _ = DB.Exec("UPDATE users SET account_status = 'active' WHERE account_status IS NULL OR account_status = ''")
 	_, _ = DB.Exec("UPDATE users SET mobile = NULL WHERE mobile = ''")
 	_, _ = DB.Exec("UPDATE users SET email = NULL WHERE email = ''")
+	_, _ = DB.Exec("UPDATE users SET created_at = CURRENT_TIMESTAMP WHERE created_at LIKE '% m=%'")
+	_, _ = DB.Exec("UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE updated_at LIKE '% m=%'")
 
 	// Live Support Chat Tables
 	_, _ = DB.Exec(`
