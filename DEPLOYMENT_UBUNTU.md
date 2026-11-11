@@ -93,3 +93,16 @@ curl http://127.0.0.1:8085/api/health
 docker compose logs -f backend
 ```
 
+
+
+# 1. Navigate to your project directory
+cd /opt/creator_platform   # (or wherever your project is located)
+
+# 2. Pull the latest commits from GitHub
+git pull origin main
+
+# 3. Rebuild the backend container without cache
+docker compose build --no-cache backend
+
+# 4. Restart the backend container
+docker compose up -d --force-recreate backend

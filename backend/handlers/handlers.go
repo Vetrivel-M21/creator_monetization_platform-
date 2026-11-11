@@ -288,7 +288,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err != nil {
-		logger.ErrorLogger.Printf("[Login] Error looking up user %s: %v", identifier, err)
+		logger.ErrorLogger.Printf("[Login] Error looking up user %s: %v", cleanId, err)
 		http.Error(w, `{"error":"invalid credentials"}`, http.StatusUnauthorized)
 		return
 	}
@@ -813,27 +813,27 @@ func FetchPlatformSettings(ctx context.Context) models.PlatformSettings {
 			case "payout_mode":
 				settings.PayoutMode = v
 			case "fixed_rate_silver":
-				fmt.Sscanf(v, "%f", &settings.FixedRateSilver)
+				_, _ = fmt.Sscanf(v, "%f", &settings.FixedRateSilver)
 			case "fixed_rate_gold":
-				fmt.Sscanf(v, "%f", &settings.FixedRateGold)
+				_, _ = fmt.Sscanf(v, "%f", &settings.FixedRateGold)
 			case "fixed_rate_diamond":
-				fmt.Sscanf(v, "%f", &settings.FixedRateDiamond)
+				_, _ = fmt.Sscanf(v, "%f", &settings.FixedRateDiamond)
 			case "rate_30m":
-				fmt.Sscanf(v, "%f", &settings.Rate30m)
+				_, _ = fmt.Sscanf(v, "%f", &settings.Rate30m)
 			case "rate_20m":
-				fmt.Sscanf(v, "%f", &settings.Rate20m)
+				_, _ = fmt.Sscanf(v, "%f", &settings.Rate20m)
 			case "rate_10m":
-				fmt.Sscanf(v, "%f", &settings.Rate10m)
+				_, _ = fmt.Sscanf(v, "%f", &settings.Rate10m)
 			case "rate_5m":
-				fmt.Sscanf(v, "%f", &settings.Rate5m)
+				_, _ = fmt.Sscanf(v, "%f", &settings.Rate5m)
 			case "rate_2m":
-				fmt.Sscanf(v, "%f", &settings.Rate2m)
+				_, _ = fmt.Sscanf(v, "%f", &settings.Rate2m)
 			case "milestone_silver":
-				fmt.Sscanf(v, "%f", &settings.MilestoneSilver)
+				_, _ = fmt.Sscanf(v, "%f", &settings.MilestoneSilver)
 			case "milestone_gold":
-				fmt.Sscanf(v, "%f", &settings.MilestoneGold)
+				_, _ = fmt.Sscanf(v, "%f", &settings.MilestoneGold)
 			case "milestone_diamond":
-				fmt.Sscanf(v, "%f", &settings.MilestoneDiamond)
+				_, _ = fmt.Sscanf(v, "%f", &settings.MilestoneDiamond)
 			case "ban_ai_videos":
 				settings.BanAIVideos = (v == "true" || v == "1")
 			}
