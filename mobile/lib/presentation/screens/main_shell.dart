@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:creator_monetization_app/core/theme/app_colors.dart';
-import 'package:creator_monetization_app/presentation/widgets/upload_sheet.dart';
-import 'package:creator_monetization_app/presentation/screens/home/home_screen.dart';
-import 'package:creator_monetization_app/presentation/screens/shorts/shorts_screen.dart';
-import 'package:creator_monetization_app/presentation/screens/subscriptions/subscriptions_screen.dart';
-import 'package:creator_monetization_app/presentation/screens/studio/studio_screen.dart';
+import '../../core/theme/app_colors.dart';
+import '../../data/services/auth_service.dart';
+import '../widgets/auth_required_dialog.dart';
+import '../widgets/upload_sheet.dart';
+import 'home/home_screen.dart';
+import 'shorts/shorts_screen.dart';
+import 'subscriptions/subscriptions_screen.dart';
+import 'studio/studio_screen.dart';
 
 class MainShellScreen extends StatefulWidget {
   const MainShellScreen({super.key});
@@ -16,8 +18,19 @@ class MainShellScreen extends StatefulWidget {
 class _MainShellScreenState extends State<MainShellScreen> {
   int _currentIndex = 0;
 
-  void _triggerUploadFlow() {
-    UploadActionSheet.show(context);
+  Future<void> _triggerUploadFlow() async {
+    final auth = AuthService.instance;
+    if (auth.isGuest) {
+      final loggedIn = await AuthRequiredDialog.show(
+        context,
+        actionName: 'upload and monetize videos',
+      );
+      if (!loggedIn) return;
+    }
+
+    if (mounted) {
+      UploadActionSheet.show(context);
+    }
   }
 
   void _onTabSelected(int index) {
@@ -52,7 +65,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: isShortsActive
-              ? Colors.black.withValues(alpha: 0.85)
+              ? Colors.black.withValues(alpha: 0.90)
               : AppColors.cardSurface,
           border: Border(
             top: BorderSide(
@@ -60,6 +73,15 @@ class _MainShellScreenState extends State<MainShellScreen> {
               width: 1,
             ),
           ),
+          boxShadow: isShortsActive
+              ? null
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 10,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
         ),
         child: SafeArea(
           top: false,
@@ -115,7 +137,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
     final isSelected = _currentIndex == index;
     final color = isDark
         ? (isSelected ? Colors.white : Colors.white60)
-        : (isSelected ? AppColors.primaryAccent : AppColors.mutedText);
+        : (isSelected ? AppColors.textPrimary : AppColors.textSecondary);
 
     return Expanded(
       child: InkWell(
@@ -154,26 +176,24 @@ class _MainShellScreenState extends State<MainShellScreen> {
           onTap: () => _onTabSelected(2),
           child: Container(
             width: 44,
-            height: 34,
+            height: 36,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF3B82F6), AppColors.primaryAccent],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(12),
+              color: isDark ? Colors.white : AppColors.darkPill,
+              borderRadius: BorderRadius.circular(13),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.primaryAccent.withValues(alpha: 0.35),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.15)
+                      : Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
-            child: const Icon(
+            child: Icon(
               Icons.add_rounded,
-              color: Colors.white,
-              size: 26,
+              color: isDark ? AppColors.textPrimary : Colors.white,
+              size: 24,
             ),
           ),
         ),

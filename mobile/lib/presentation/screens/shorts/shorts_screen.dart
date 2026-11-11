@@ -283,13 +283,15 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
       _shorts[index] = video.copyWith(isSubscribed: newSubscribed);
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(newSubscribed ? 'Subscribed to ${video.creatorName}' : 'Unsubscribed'),
-        backgroundColor: AppColors.primary,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(newSubscribed ? 'Subscribed to ${video.creatorName}' : 'Unsubscribed'),
+          backgroundColor: AppColors.primary,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   void _onDoubleTap(TapDownDetails details, int index) {
@@ -417,7 +419,7 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
                   Image.network(
                     video.thumbnailUrl,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(color: Colors.black87),
+                    errorBuilder: (_, error, stackTrace) => Container(color: Colors.black87),
                   ),
 
                 // Buffering Indicator

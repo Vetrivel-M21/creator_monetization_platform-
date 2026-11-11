@@ -194,7 +194,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                 decoration: BoxDecoration(
                   color: AppColors.roseLight,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.rose.withOpacity(0.3)),
+                  border: Border.all(color: AppColors.rose.withValues(alpha: 0.3)),
                 ),
                 child: Row(
                   children: [
@@ -264,7 +264,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.1),
+                        color: AppColors.primary.withValues(alpha: 0.1),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(Icons.video_file_outlined, color: AppColors.primary, size: 26),
@@ -485,7 +485,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary.withOpacity(0.08) : AppColors.surface,
+          color: isSelected ? AppColors.primary.withValues(alpha: 0.08) : AppColors.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? AppColors.primary : AppColors.surfaceBorder,

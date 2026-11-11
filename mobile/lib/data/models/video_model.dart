@@ -1,7 +1,7 @@
 import '../../core/utils/date_formatter.dart';
 
 class VideoModel {
-  static const String serverBase = 'http://10.10.100.251:2085';
+  static const String serverBase = 'https://entertainment.aurapictures.online';
 
   static String resolveUrl(String? url) {
     if (url == null || url.isEmpty) return '';
@@ -32,6 +32,8 @@ class VideoModel {
   final int viewsCount;
   final int likesCount;
   final int commentsCount;
+  final String status;
+  final double totalEarned;
   final bool isLiked;
   final bool isSaved;
   final bool isSubscribed;
@@ -56,6 +58,8 @@ class VideoModel {
     this.viewsCount = 0,
     this.likesCount = 0,
     this.commentsCount = 0,
+    this.status = 'approved',
+    this.totalEarned = 0.0,
     this.isLiked = false,
     this.isSaved = false,
     this.isSubscribed = false,
@@ -73,6 +77,8 @@ class VideoModel {
     int? likesCount,
     int? commentsCount,
     int? viewsCount,
+    String? status,
+    double? totalEarned,
   }) {
     return VideoModel(
       id: id,
@@ -93,11 +99,35 @@ class VideoModel {
       viewsCount: viewsCount ?? this.viewsCount,
       likesCount: likesCount ?? this.likesCount,
       commentsCount: commentsCount ?? this.commentsCount,
+      status: status ?? this.status,
+      totalEarned: totalEarned ?? this.totalEarned,
       isLiked: isLiked ?? this.isLiked,
       isSaved: isSaved ?? this.isSaved,
       isSubscribed: isSubscribed ?? this.isSubscribed,
       createdAt: createdAt,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'description': description,
+      'category': category,
+      'video_type': videoType,
+      'duration_minutes': durationMinutes,
+      'video_url': videoUrl,
+      'hls_url': hlsUrl,
+      'thumbnail_url': thumbnailUrl,
+      'creator_name': creatorName,
+      'creator_tier': creatorTier,
+      'views_count': viewsCount,
+      'likes_count': likesCount,
+      'comments_count': commentsCount,
+      'status': status,
+      'total_earned': totalEarned,
+      'created_at': createdAt.toIso8601String(),
+    };
   }
 
   factory VideoModel.fromJson(Map<String, dynamic> json) {
@@ -154,6 +184,8 @@ class VideoModel {
       viewsCount: (json['views_count'] as num?)?.toInt() ?? 0,
       likesCount: (json['likes_count'] as num?)?.toInt() ?? 0,
       commentsCount: (json['comments_count'] as num?)?.toInt() ?? 0,
+      status: json['status']?.toString() ?? 'approved',
+      totalEarned: (json['total_earned'] as num?)?.toDouble() ?? 0.0,
       createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now() : DateTime.now(),
     );
   }

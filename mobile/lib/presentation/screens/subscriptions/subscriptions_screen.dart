@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:creator_monetization_app/core/theme/app_colors.dart';
-import 'package:creator_monetization_app/data/models/video_model.dart';
-import 'package:creator_monetization_app/data/services/api_service.dart';
-import 'package:creator_monetization_app/presentation/widgets/video_card.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../data/models/video_model.dart';
+import '../../../data/services/api_service.dart';
+import '../../../data/services/auth_service.dart';
+import '../search/search_screen.dart';
 import '../video_detail/video_detail_screen.dart';
+import '../../widgets/video_card.dart';
 
 class SubscriptionsScreen extends StatefulWidget {
   const SubscriptionsScreen({super.key});
@@ -55,30 +57,26 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = AuthService.instance;
+
     return Scaffold(
       backgroundColor: AppColors.canvasBackground,
       appBar: AppBar(
         title: const Text('Subscriptions'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.cast_rounded),
+            icon: const Icon(Icons.search_rounded, color: AppColors.textPrimary, size: 22),
+            tooltip: 'Search Subscriptions',
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Searching for Cast screens...')),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.notifications_none_rounded),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('No new channel notifications.')),
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SearchScreen()),
               );
             },
           ),
         ],
       ),
       body: RefreshIndicator(
+        color: AppColors.primary,
         onRefresh: () async {
           setState(() {
             _loadVideos();
@@ -88,28 +86,39 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           future: _videosFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: CircularProgressIndicator(color: AppColors.primaryAccent),
-              );
+              return _buildSkeletonList();
             }
 
             if (snapshot.hasError) {
               return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline_rounded, size: 48, color: AppColors.mutedText),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Failed to load subscriptions',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: () => setState(() => _loadVideos()),
-                      child: const Text('Try Again'),
-                    ),
-                  ],
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.wifi_off_rounded, size: 48, color: AppColors.textSecondary),
+                      const SizedBox(height: 14),
+                      const Text(
+                        'Failed to load subscriptions',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Please verify your connection and try again.',
+                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 18),
+                      FilledButton(
+                        onPressed: () => setState(() => _loadVideos()),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.darkPill,
+                          foregroundColor: AppColors.darkPillText,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: const Text('Try Again'),
+                      ),
+                    ],
+                  ),
                 ),
               );
             }
@@ -120,6 +129,55 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                 ? allVideos
                 : allVideos.where((v) => v.creatorName == _selectedChannelId).toList();
 
+            if (allVideos.isEmpty) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppColors.surfaceBorder, width: 1),
+                        ),
+                        child: const Icon(
+                          Icons.subscriptions_outlined,
+                          size: 30,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      const Text(
+                        'No Subscriptions Yet',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        auth.isGuest
+                            ? 'Sign in and subscribe to your favorite creators to see their latest videos here.'
+                            : 'Subscribe to channels from Home and their new uploads will appear right here.',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
             return CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(
                 parent: BouncingScrollPhysics(),
@@ -129,196 +187,189 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                 if (channels.length > 1)
                   SliverToBoxAdapter(
                     child: Container(
-                      color: AppColors.cardSurface,
+                      color: AppColors.surface,
                       padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: SizedBox(
+                        height: 94,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: channels.length,
+                          separatorBuilder: (context, index) => const SizedBox(width: 14),
+                          itemBuilder: (context, index) {
+                            final channel = channels[index];
+                            final isAll = channel['id'] == 'all';
+                            final isSelected = _selectedChannelId == channel['id'];
+
+                            return GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _selectedChannelId = channel['id'] as String;
+                                });
+                              },
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 58,
+                                    height: 58,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: isSelected ? AppColors.darkPill : AppColors.surfaceBorder,
+                                        width: isSelected ? 2.5 : 1,
+                                      ),
+                                    ),
+                                    padding: const EdgeInsets.all(2.5),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(26),
+                                      child: isAll
+                                          ? Container(
+                                              color: AppColors.secondaryBadge,
+                                              child: const Icon(
+                                                Icons.grid_view_rounded,
+                                                color: AppColors.primary,
+                                                size: 22,
+                                              ),
+                                            )
+                                          : Image.network(
+                                              channel['avatar'] as String,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) => Container(
+                                                color: AppColors.secondaryBadge,
+                                                child: Center(
+                                                  child: Text(
+                                                    (channel['name'] as String).isNotEmpty
+                                                        ? (channel['name'] as String)[0].toUpperCase()
+                                                        : 'C',
+                                                    style: const TextStyle(
+                                                      color: AppColors.primary,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  SizedBox(
+                                    width: 66,
+                                    child: Text(
+                                      channel['name'] as String,
+                                      textAlign: TextAlign.center,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                        color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+
+                const SliverToBoxAdapter(child: SizedBox(height: 8)),
+
+                // Videos Feed
+                SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final video = filteredVideos[index];
+                      return VideoCard(
+                        video: video,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => VideoDetailScreen(video: video),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                    childCount: filteredVideos.length,
+                  ),
+                ),
+
+                const SliverToBoxAdapter(child: SizedBox(height: 32)),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonList() {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: 3,
+      itemBuilder: (ctx, i) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.surfaceBorder, width: 1),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Container(color: AppColors.shimmerBase),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: const BoxDecoration(
+                        color: AppColors.shimmerBase,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SizedBox(
-                            height: 94,
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              itemCount: channels.length,
-                              separatorBuilder: (context, index) => const SizedBox(width: 14),
-                              itemBuilder: (context, index) {
-                                final channel = channels[index];
-                                final isAll = channel['id'] == 'all';
-                                final isSelected = _selectedChannelId == channel['id'];
-                                final hasNew = channel['hasNew'] == true;
-                                final isLive = channel['isLive'] == true;
-
-                                return GestureDetector(
-                                  onTap: () {
-                                    setState(() {
-                                      _selectedChannelId = channel['id'] as String;
-                                    });
-                                  },
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Stack(
-                                        alignment: Alignment.center,
-                                        children: [
-                                          Container(
-                                            width: 58,
-                                            height: 58,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              gradient: isLive
-                                                  ? const LinearGradient(
-                                                      colors: [Color(0xFFE11D48), Color(0xFFF97316)],
-                                                      begin: Alignment.topLeft,
-                                                      end: Alignment.bottomRight,
-                                                    )
-                                                  : hasNew && !isAll
-                                                      ? const LinearGradient(
-                                                          colors: [AppColors.primaryAccent, Color(0xFF60A5FA)],
-                                                          begin: Alignment.topLeft,
-                                                          end: Alignment.bottomRight,
-                                                        )
-                                                      : null,
-                                              border: !isLive && (!hasNew || isAll)
-                                                  ? Border.all(
-                                                      color: isSelected
-                                                          ? AppColors.primaryAccent
-                                                          : AppColors.surfaceBorder,
-                                                      width: isSelected ? 2.5 : 1,
-                                                    )
-                                                  : null,
-                                            ),
-                                            padding: const EdgeInsets.all(2.5),
-                                            child: Container(
-                                              decoration: const BoxDecoration(
-                                                color: AppColors.cardSurface,
-                                                shape: BoxShape.circle,
-                                              ),
-                                              padding: const EdgeInsets.all(2),
-                                              child: ClipRRect(
-                                                borderRadius: BorderRadius.circular(26),
-                                                child: isAll
-                                                    ? Container(
-                                                        color: AppColors.secondaryBadgeBg,
-                                                        child: const Icon(
-                                                          Icons.grid_view_rounded,
-                                                          color: AppColors.primaryAccent,
-                                                          size: 22,
-                                                        ),
-                                                      )
-                                                    : Image.network(
-                                                        channel['avatar'] as String,
-                                                        fit: BoxFit.cover,
-                                                        errorBuilder: (context, error, stackTrace) =>
-                                                            Container(
-                                                          color: AppColors.secondaryBadgeBg,
-                                                          child: Center(
-                                                            child: Text(
-                                                              (channel['name'] as String).isNotEmpty
-                                                                  ? (channel['name'] as String)[0].toUpperCase()
-                                                                  : 'C',
-                                                              style: const TextStyle(
-                                                                color: AppColors.primaryAccent,
-                                                                fontWeight: FontWeight.bold,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      SizedBox(
-                                        width: 66,
-                                        child: Text(
-                                          channel['name'] as String,
-                                          textAlign: TextAlign.center,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                                            color: isSelected
-                                                ? AppColors.primaryAccent
-                                                : AppColors.primaryText,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
+                          Container(
+                            width: double.infinity,
+                            height: 14,
+                            decoration: BoxDecoration(
+                              color: AppColors.shimmerBase,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            width: 140,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: AppColors.shimmerBase,
+                              borderRadius: BorderRadius.circular(4),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-
-                // Feed Section Header
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          _selectedChannelId == 'all'
-                              ? 'Latest Releases (${filteredVideos.length})'
-                              : '$_selectedChannelId Videos (${filteredVideos.length})',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.primaryText,
-                          ),
-                        ),
-                        if (_selectedChannelId != 'all')
-                          TextButton(
-                            onPressed: () => setState(() => _selectedChannelId = 'all'),
-                            child: const Text('Show All', style: TextStyle(fontSize: 12)),
-                          ),
-                      ],
-                    ),
-                  ),
+                  ],
                 ),
-
-                // Video Feed
-                if (filteredVideos.isEmpty)
-                  const SliverFillRemaining(
-                    child: Center(
-                      child: Text(
-                        'No videos from this creator yet.',
-                        style: TextStyle(color: AppColors.mutedText),
-                      ),
-                    ),
-                  )
-                else
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final video = filteredVideos[index];
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: VideoCard(
-                            video: video,
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => VideoDetailScreen(video: video),
-                                ),
-                              );
-                            },
-                          ),
-                        );
-                      },
-                      childCount: filteredVideos.length,
-                    ),
-                  ),
-              ],
-            );
-          },
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -99,7 +99,7 @@ class _LegalScreenState extends State<LegalScreen> with SingleTickerProviderStat
           decoration: BoxDecoration(
             color: AppColors.secondaryBadge,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+            border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
           ),
           child: const Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -165,7 +165,7 @@ class _LegalScreenState extends State<LegalScreen> with SingleTickerProviderStat
           decoration: BoxDecoration(
             color: AppColors.emeraldLight,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.emerald.withOpacity(0.2)),
+            border: Border.all(color: AppColors.emerald.withValues(alpha: 0.2)),
           ),
           child: const Row(
             crossAxisAlignment: CrossAxisAlignment.start,

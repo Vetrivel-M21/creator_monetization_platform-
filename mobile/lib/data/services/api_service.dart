@@ -1,16 +1,23 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import '../../core/constants/api_constants.dart';
 import '../models/category_model.dart';
-import '../models/video_model.dart';
 import '../models/studio_model.dart';
 import '../models/user_model.dart';
-import '../../core/utils/date_formatter.dart';
+import '../models/video_model.dart';
 
 class ApiService {
-  // Workstation private Wi-Fi IP for seamless mobile device connectivity
-  static const String serverHost = '10.10.100.251:2085';
-  static const String baseUrl = 'http://$serverHost/api';
+  static String get baseUrl => ApiConstants.baseUrl;
+
+  /// Global callback invoked on 401 Unauthorized responses
+  static void Function()? onUnauthorized;
+
+  static void _checkUnauthorized(int statusCode, String? token) {
+    if (statusCode == 401 && token != null && token.isNotEmpty) {
+      onUnauthorized?.call();
+    }
+  }
 
   static Map<String, String> _headers([String? token]) {
     final map = <String, String>{
@@ -31,12 +38,11 @@ class ApiService {
     try {
       final response = await http
           .get(Uri.parse('$baseUrl/categories'))
-          .timeout(const Duration(seconds: 4));
+          .timeout(ApiConstants.requestTimeout);
       if (response.statusCode == 200) {
         final List data = jsonDecode(response.body);
         if (data.isNotEmpty) {
           final categories = data.map((c) => CategoryModel.fromJson(c)).toList();
-          // Always ensure 'All' is at the top
           if (!categories.any((c) => c.slug == 'all')) {
             categories.insert(
               0,
@@ -52,9 +58,7 @@ class ApiService {
           return categories;
         }
       }
-    } catch (_) {
-      // Graceful fallback to default categories
-    }
+    } catch (_) {}
     return CategoryModel.defaultCategories();
   }
 
@@ -65,27 +69,30 @@ class ApiService {
   Future<List<VideoModel>> fetchVideos({
     String category = 'All',
     String? videoType,
+    String? search,
   }) async {
     try {
       final queryParams = <String, String>{};
       if (category.isNotEmpty && category.toLowerCase() != 'all') {
         queryParams['category'] = category.toLowerCase();
       }
-      if (videoType != null && videoType.isNotEmpty) {
+      if (videoType != null && videoType.isNotEmpty && videoType.toLowerCase() != 'all') {
         queryParams['video_type'] = videoType;
+      }
+      if (search != null && search.trim().isNotEmpty) {
+        queryParams['search'] = search.trim();
       }
 
       final uri = Uri.parse('$baseUrl/videos').replace(
         queryParameters: queryParams.isEmpty ? null : queryParams,
       );
 
-      final response = await http.get(uri).timeout(const Duration(seconds: 5));
+      final response = await http.get(uri).timeout(ApiConstants.requestTimeout);
       if (response.statusCode == 200) {
         final List data = jsonDecode(response.body);
         var list = data.map((json) => VideoModel.fromJson(json)).toList();
 
-        // Client-side filtering ensures safety if server returns all
-        if (videoType != null && videoType.isNotEmpty) {
+        if (videoType != null && videoType.isNotEmpty && videoType.toLowerCase() != 'all') {
           list = list.where((v) => v.videoType == videoType).toList();
         }
         if (category.isNotEmpty && category.toLowerCase() != 'all') {
@@ -95,20 +102,18 @@ class ApiService {
             return cat.contains(target) || target.contains(cat);
           }).toList();
         }
+        if (search != null && search.trim().isNotEmpty) {
+          final query = search.trim().toLowerCase();
+          list = list.where((v) {
+            return v.title.toLowerCase().contains(query) ||
+                v.creatorName.toLowerCase().contains(query) ||
+                v.description.toLowerCase().contains(query);
+          }).toList();
+        }
         return list;
       }
-    } catch (_) {
-      // Graceful fallback to mock data
-    }
-
-    var mocks = getMockVideos();
-    if (videoType != null && videoType.isNotEmpty) {
-      mocks = mocks.where((v) => v.videoType == videoType).toList();
-    }
-    if (category.isNotEmpty && category.toLowerCase() != 'all') {
-      mocks = mocks.where((v) => v.category.toLowerCase().contains(category.toLowerCase())).toList();
-    }
-    return mocks;
+    } catch (_) {}
+    return [];
   }
 
   Future<List<VideoModel>> fetchLandscapeVideos({String category = 'All'}) {
@@ -131,18 +136,20 @@ class ApiService {
             headers: _headers(token),
             body: jsonEncode({'unlike': unlike}),
           )
-          .timeout(const Duration(seconds: 3));
+          .timeout(ApiConstants.requestTimeout);
+      _checkUnauthorized(res.statusCode, token);
       return res.statusCode == 200;
     } catch (_) {
       return false;
     }
   }
 
-  Future<bool> shareVideo(String videoId) async {
+  Future<bool> shareVideo(String videoId, {String? token}) async {
     try {
       final res = await http
-          .post(Uri.parse('$baseUrl/videos/$videoId/share'), headers: _headers())
-          .timeout(const Duration(seconds: 3));
+          .post(Uri.parse('$baseUrl/videos/$videoId/share'), headers: _headers(token))
+          .timeout(ApiConstants.requestTimeout);
+      _checkUnauthorized(res.statusCode, token);
       return res.statusCode == 200;
     } catch (_) {
       return false;
@@ -153,7 +160,7 @@ class ApiService {
     try {
       final res = await http
           .post(Uri.parse('$baseUrl/videos/$videoId/view'), headers: _headers())
-          .timeout(const Duration(seconds: 3));
+          .timeout(ApiConstants.requestTimeout);
       return res.statusCode == 200;
     } catch (_) {
       return false;
@@ -168,46 +175,13 @@ class ApiService {
     try {
       final res = await http
           .get(Uri.parse('$baseUrl/videos/$videoId/comments'))
-          .timeout(const Duration(seconds: 3));
+          .timeout(ApiConstants.requestTimeout);
       if (res.statusCode == 200) {
         final List data = jsonDecode(res.body);
         return data.map((c) => CommentModel.fromJson(c)).toList();
       }
     } catch (_) {}
-
-    final now = DateTime.now();
-    return [
-      CommentModel(
-        id: 'cmt-1',
-        videoId: videoId,
-        author: 'Anand Kumar',
-        avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=anand',
-        text: 'The explanation on duration buckets and adaptive CMAF streaming is top tier!',
-        likes: 18,
-        createdAt: now.subtract(const Duration(minutes: 15)),
-        timeFormatted: formatTimeAgo(now.subtract(const Duration(minutes: 15))),
-      ),
-      CommentModel(
-        id: 'cmt-2',
-        videoId: videoId,
-        author: 'Sara Jenkins',
-        avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=sara',
-        text: 'Glad to see a platform paying creators for authentic human-crafted tutorials.',
-        likes: 9,
-        createdAt: now.subtract(const Duration(hours: 1)),
-        timeFormatted: formatTimeAgo(now.subtract(const Duration(hours: 1))),
-      ),
-      CommentModel(
-        id: 'cmt-3',
-        videoId: videoId,
-        author: 'Karthik Raja',
-        avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=karthik',
-        text: 'Master Movie trailer breakdown when? Great video overall!',
-        likes: 4,
-        createdAt: now.subtract(const Duration(hours: 2)),
-        timeFormatted: formatTimeAgo(now.subtract(const Duration(hours: 2))),
-      ),
-    ];
+    return [];
   }
 
   Future<CommentModel?> postComment(
@@ -228,7 +202,8 @@ class ApiService {
               'content': content,
             }),
           )
-          .timeout(const Duration(seconds: 4));
+          .timeout(ApiConstants.requestTimeout);
+      _checkUnauthorized(res.statusCode, token);
       if (res.statusCode == 200 || res.statusCode == 201) {
         return CommentModel.fromJson(jsonDecode(res.body));
       }
@@ -237,21 +212,27 @@ class ApiService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Authentication
+  // Authentication & OTP Engine
   // ─────────────────────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>?> login({
-    required String email,
+    required String identifier,
     required String password,
   }) async {
     try {
+      final cleanId = identifier.trim();
       final res = await http
           .post(
             Uri.parse('$baseUrl/auth/login'),
             headers: _headers(),
-            body: jsonEncode({'email': email, 'password': password}),
+            body: jsonEncode({
+              'identifier': cleanId,
+              'email': cleanId,
+              'password': password,
+            }),
           )
-          .timeout(const Duration(seconds: 6));
+          .timeout(ApiConstants.requestTimeout);
+
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['token'] != null && data['user'] != null) {
@@ -263,10 +244,67 @@ class ApiService {
     return null;
   }
 
+  Future<Map<String, dynamic>?> sendOtp(String email) async {
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$baseUrl/auth/send-otp'),
+            headers: _headers(),
+            body: jsonEncode({'email': email.trim().toLowerCase()}),
+          )
+          .timeout(ApiConstants.requestTimeout);
+
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> verifyOtp({
+    required String email,
+    required String otp,
+  }) async {
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$baseUrl/auth/verify-otp'),
+            headers: _headers(),
+            body: jsonEncode({
+              'email': email.trim().toLowerCase(),
+              'otp': otp.trim(),
+            }),
+          )
+          .timeout(ApiConstants.requestTimeout);
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        if (data['token'] != null && data['user'] != null) {
+          final user = UserModel.fromJson(data['user'], token: data['token']);
+          return {
+            'is_new_user': false,
+            'token': data['token'],
+            'user': user,
+            'message': data['message'],
+          };
+        } else if (data['is_new_user'] == true) {
+          return {
+            'is_new_user': true,
+            'email': data['email'] ?? email,
+            'message': data['message'],
+          };
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   Future<Map<String, dynamic>?> register({
     required String name,
     required String email,
     required String password,
+    String? mobile,
+    int age = 25,
     String? channelName,
     String? channelDescription,
   }) async {
@@ -276,15 +314,17 @@ class ApiService {
             Uri.parse('$baseUrl/auth/register'),
             headers: _headers(),
             body: jsonEncode({
-              'name': name,
-              'email': email,
+              'name': name.trim(),
+              'email': email.trim().toLowerCase(),
+              'mobile': mobile?.trim() ?? '',
+              'age': age,
               'password': password,
-              'channel_name': channelName ?? name,
-              'channel_description': channelDescription ?? '',
-              'age': 25,
+              'channel_name': channelName?.trim().isNotEmpty == true ? channelName!.trim() : name.trim(),
+              'channel_description': channelDescription?.trim() ?? '',
             }),
           )
-          .timeout(const Duration(seconds: 6));
+          .timeout(ApiConstants.requestTimeout);
+
       if (res.statusCode == 200 || res.statusCode == 201) {
         final data = jsonDecode(res.body);
         if (data['token'] != null && data['user'] != null) {
@@ -302,17 +342,18 @@ class ApiService {
     String? name,
   }) async {
     try {
+      final payload = <String, dynamic>{'credential': idToken};
+      if (email != null) payload['email'] = email;
+      if (name != null) payload['name'] = name;
+
       final res = await http
           .post(
             Uri.parse('$baseUrl/auth/google'),
             headers: _headers(),
-            body: jsonEncode({
-              'credential': idToken,
-              if (email != null) 'email': email,
-              if (name != null) 'name': name,
-            }),
+            body: jsonEncode(payload),
           )
-          .timeout(const Duration(seconds: 6));
+          .timeout(ApiConstants.requestTimeout);
+
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['token'] != null && data['user'] != null) {
@@ -351,12 +392,10 @@ class ApiService {
       request.fields['category'] = category;
       request.fields['video_type'] = videoType;
 
-      // Add video file
       final videoFile = File(filePath);
       if (!await videoFile.exists()) return false;
       request.files.add(await http.MultipartFile.fromPath('video', filePath));
 
-      // Add thumbnail if present
       if (thumbnailPath != null && thumbnailPath.isNotEmpty) {
         final thumbFile = File(thumbnailPath);
         if (await thumbFile.exists()) {
@@ -364,8 +403,9 @@ class ApiService {
         }
       }
 
-      final streamedResponse = await request.send();
+      final streamedResponse = await request.send().timeout(ApiConstants.uploadTimeout);
       final response = await http.Response.fromStream(streamedResponse);
+      _checkUnauthorized(response.statusCode, token);
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (_) {
       return false;
@@ -373,15 +413,15 @@ class ApiService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Creator Studio & Mock Fallbacks
+  // Support, User Profile, Studio & Wallet
   // ─────────────────────────────────────────────────────────────────────────────
 
-  // Support Chat
   Future<Map<String, dynamic>?> fetchSupportThread(String token) async {
     try {
       final res = await http
           .get(Uri.parse('$baseUrl/support/thread'), headers: _headers(token))
-          .timeout(const Duration(seconds: 5));
+          .timeout(ApiConstants.requestTimeout);
+      _checkUnauthorized(res.statusCode, token);
       if (res.statusCode == 200) {
         return jsonDecode(res.body) as Map<String, dynamic>;
       }
@@ -397,7 +437,8 @@ class ApiService {
             headers: _headers(token),
             body: jsonEncode({'message': message}),
           )
-          .timeout(const Duration(seconds: 5));
+          .timeout(ApiConstants.requestTimeout);
+      _checkUnauthorized(res.statusCode, token);
       if (res.statusCode == 200 || res.statusCode == 201) {
         return jsonDecode(res.body) as Map<String, dynamic>;
       }
@@ -409,7 +450,8 @@ class ApiService {
     try {
       final res = await http
           .get(Uri.parse('$baseUrl/user/profile'), headers: _headers(token))
-          .timeout(const Duration(seconds: 5));
+          .timeout(ApiConstants.requestTimeout);
+      _checkUnauthorized(res.statusCode, token);
       if (res.statusCode == 200) {
         return jsonDecode(res.body) as Map<String, dynamic>;
       }
@@ -422,7 +464,8 @@ class ApiService {
       final uri = Uri.parse('$baseUrl/creator/eligibility');
       final res = await http
           .get(uri, headers: _headers(token))
-          .timeout(const Duration(seconds: 5));
+          .timeout(ApiConstants.requestTimeout);
+      _checkUnauthorized(res.statusCode, token);
       if (res.statusCode == 200) {
         return jsonDecode(res.body) as Map<String, dynamic>;
       }
@@ -434,7 +477,8 @@ class ApiService {
     try {
       final res = await http
           .get(Uri.parse('$baseUrl/kyc'), headers: _headers(token))
-          .timeout(const Duration(seconds: 5));
+          .timeout(ApiConstants.requestTimeout);
+      _checkUnauthorized(res.statusCode, token);
       if (res.statusCode == 200) {
         return jsonDecode(res.body) as Map<String, dynamic>;
       }
@@ -446,7 +490,8 @@ class ApiService {
     try {
       final res = await http
           .get(Uri.parse('$baseUrl/wallet/$userId'), headers: _headers(token))
-          .timeout(const Duration(seconds: 5));
+          .timeout(ApiConstants.requestTimeout);
+      _checkUnauthorized(res.statusCode, token);
       if (res.statusCode == 200) {
         return jsonDecode(res.body) as Map<String, dynamic>;
       }
@@ -465,7 +510,8 @@ class ApiService {
             headers: _headers(token),
             body: jsonEncode({'amount': amount}),
           )
-          .timeout(const Duration(seconds: 8));
+          .timeout(ApiConstants.requestTimeout);
+      _checkUnauthorized(res.statusCode, token);
 
       final data = jsonDecode(res.body);
       if (res.statusCode == 200 || res.statusCode == 201) {
@@ -508,18 +554,100 @@ class ApiService {
     return CreatorStudioModel.sample();
   }
 
+  Future<Map<String, dynamic>> submitKyc({
+    required String token,
+    required String pan,
+    required String aadhaar,
+    required String bankAccount,
+    required String ifsc,
+    required String bankName,
+    required String holderName,
+  }) async {
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$baseUrl/kyc'),
+            headers: _headers(token),
+            body: jsonEncode({
+              'pan_number': pan.trim().toUpperCase(),
+              'aadhaar_number': aadhaar.trim().replaceAll(' ', ''),
+              'bank_account': bankAccount.trim(),
+              'ifsc_code': ifsc.trim().toUpperCase(),
+              'bank_name': bankName.trim(),
+              'account_holder': holderName.trim(),
+              'agreement_agreed': true,
+            }),
+          )
+          .timeout(ApiConstants.requestTimeout);
+      _checkUnauthorized(res.statusCode, token);
+
+      final data = jsonDecode(res.body);
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        return {
+          'success': true,
+          'message': data['message'] ?? 'KYC submitted successfully for review!',
+        };
+      } else {
+        return {
+          'success': false,
+          'error': data['error'] ?? 'KYC submission failed.',
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'error': 'Network connection error: $e'};
+    }
+  }
+
+  Future<List<VideoModel>> fetchMyUploadedVideos(String token, String userId) async {
+    try {
+      final uri = Uri.parse('$baseUrl/videos?creator_id=$userId&status=all');
+      final res = await http
+          .get(uri, headers: _headers(token))
+          .timeout(ApiConstants.requestTimeout);
+      _checkUnauthorized(res.statusCode, token);
+      if (res.statusCode == 200) {
+        final List data = jsonDecode(res.body);
+        return data.map((json) => VideoModel.fromJson(json)).toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  Future<bool> updateProfile({
+    required String token,
+    required String name,
+    required String channelName,
+    required String channelDescription,
+  }) async {
+    try {
+      final res = await http
+          .put(
+            Uri.parse('$baseUrl/user/profile'),
+            headers: _headers(token),
+            body: jsonEncode({
+              'name': name.trim(),
+              'channel_name': channelName.trim(),
+              'channel_description': channelDescription.trim(),
+            }),
+          )
+          .timeout(ApiConstants.requestTimeout);
+      _checkUnauthorized(res.statusCode, token);
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<List<VideoModel>> fetchHomeVideos() => fetchLandscapeVideos();
   Future<CreatorStudioModel> fetchStudioData([String? token, UserModel? user]) =>
       fetchCreatorStudio(token, user);
 
-  static List<VideoModel> getMockVideos() {
+  /// Minimal offline demo videos only used if an explicit demo is triggered
+  static List<VideoModel> getOfflineDemoVideos() {
     return const [];
   }
 
-  static List<ShortReelModel> getMockReels() {
-    return getMockVideos()
-        .where((v) => v.videoType == 'short')
-        .map((v) => ShortReelModel.fromVideoModel(v))
-        .toList();
-  }
+  static List<VideoModel> getMockVideos() => const [];
+
+  List<VideoModel> getHomeShortsFallback() => const [];
 }

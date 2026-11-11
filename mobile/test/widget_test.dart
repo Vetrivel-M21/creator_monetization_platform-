@@ -48,12 +48,12 @@ void main() {
       expect(likedVideo.likesCount, 96);
     });
 
-    test('AppColors verifies Light Mode WCAG AA tokens', () {
-      expect(AppColors.canvasBackground.toARGB32(), 0xFFF0F6FF);
+    test('AppColors verifies Light Mode tokens according to PREMIUM_UI_DESIGN.md', () {
+      expect(AppColors.canvasBackground.toARGB32(), 0xFFF5F5F7);
       expect(AppColors.cardSurface.toARGB32(), 0xFFFFFFFF);
       expect(AppColors.primaryAccent.toARGB32(), 0xFF2563EB);
-      expect(AppColors.primaryText.toARGB32(), 0xFF0F172A);
-      expect(AppColors.mutedText.toARGB32(), 0xFF64748B);
+      expect(AppColors.primaryText.toARGB32(), 0xFF1D1D1F);
+      expect(AppColors.mutedText.toARGB32(), 0xFF86868B);
     });
   });
 }

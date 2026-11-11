@@ -25,11 +25,14 @@ class AuthRequiredDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: const BorderSide(color: AppColors.surfaceBorder, width: 1),
+      ),
       backgroundColor: AppColors.surface,
-      elevation: 12,
+      elevation: 0,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -37,7 +40,7 @@ class AuthRequiredDialog extends StatelessWidget {
               width: 56,
               height: 56,
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
+                color: AppColors.primary.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -69,10 +72,10 @@ class AuthRequiredDialog extends StatelessWidget {
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
-              height: 44,
+              height: 46,
               child: ElevatedButton(
                 onPressed: () async {
-                  Navigator.of(context).pop();
+                  final navigator = Navigator.of(context);
                   final loggedIn = await AuthSheet.show(context);
                   if (loggedIn == true && context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -82,14 +85,17 @@ class AuthRequiredDialog extends StatelessWidget {
                         duration: Duration(seconds: 2),
                       ),
                     );
+                    navigator.pop(true);
+                  } else if (context.mounted) {
+                    navigator.pop(false);
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
+                  backgroundColor: AppColors.darkPill,
+                  foregroundColor: AppColors.darkPillText,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
                 child: const Text(
@@ -107,7 +113,7 @@ class AuthRequiredDialog extends StatelessWidget {
                 style: TextButton.styleFrom(
                   foregroundColor: AppColors.textSecondary,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
                 child: const Text(
@@ -122,4 +128,3 @@ class AuthRequiredDialog extends StatelessWidget {
     );
   }
 }
-

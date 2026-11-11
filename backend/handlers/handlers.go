@@ -179,6 +179,7 @@ func VerifyEmailOTP(w http.ResponseWriter, r *http.Request) {
 func Login(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Identifier string `json:"identifier"`
+		Email      string `json:"email"`
 		Password   string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -187,8 +188,11 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	identifier := strings.TrimSpace(req.Identifier)
+	if identifier == "" {
+		identifier = strings.TrimSpace(req.Email)
+	}
 	if identifier == "" || req.Password == "" {
-		http.Error(w, `{"error":"identifier and password are required"}`, http.StatusBadRequest)
+		http.Error(w, `{"error":"identifier (or email) and password are required"}`, http.StatusBadRequest)
 		return
 	}
 
@@ -429,6 +433,17 @@ func ListVideos(w http.ResponseWriter, r *http.Request) {
 		query += " AND (video_type = ? OR (video_type IS NULL AND ? = 'landscape'))"
 		args = append(args, videoType, videoType)
 	}
+
+	search := strings.TrimSpace(r.URL.Query().Get("search"))
+	if search == "" {
+		search = strings.TrimSpace(r.URL.Query().Get("q"))
+	}
+	if search != "" {
+		query += " AND (title LIKE ? OR description LIKE ? OR creator_name LIKE ?)"
+		pattern := "%" + search + "%"
+		args = append(args, pattern, pattern, pattern)
+	}
+
 	query += " ORDER BY created_at DESC"
 
 	rows, err := database.DB.QueryContext(r.Context(), query, args...)

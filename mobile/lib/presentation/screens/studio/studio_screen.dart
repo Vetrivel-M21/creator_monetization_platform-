@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:creator_monetization_app/core/theme/app_colors.dart';
 import 'package:creator_monetization_app/data/models/studio_model.dart';
+import 'package:creator_monetization_app/data/models/video_model.dart';
 import 'package:creator_monetization_app/data/services/api_service.dart';
 import 'package:creator_monetization_app/data/services/auth_service.dart';
 import '../support/support_screen.dart';
 import '../legal/legal_screen.dart';
+import '../upload/upload_video_screen.dart';
+import '../../widgets/auth_sheet.dart';
+import '../../widgets/auth_required_dialog.dart';
 
 class StudioScreen extends StatefulWidget {
   const StudioScreen({super.key});
@@ -16,6 +20,7 @@ class StudioScreen extends StatefulWidget {
 class _StudioScreenState extends State<StudioScreen> {
   final ApiService _apiService = ApiService();
   late Future<CreatorStudioModel> _studioFuture;
+  late Future<List<VideoModel>> _myVideosFuture;
 
   @override
   void initState() {
@@ -26,6 +31,27 @@ class _StudioScreenState extends State<StudioScreen> {
   void _loadStudio() {
     final auth = AuthService.instance;
     _studioFuture = _apiService.fetchStudioData(auth.token, auth.currentUser);
+    if (auth.isLoggedIn && auth.currentUser != null) {
+      _myVideosFuture = _apiService.fetchMyUploadedVideos(auth.token!, auth.currentUser!.id);
+    } else {
+      _myVideosFuture = Future.value(<VideoModel>[]);
+    }
+  }
+
+  Future<void> _navigateToUpload() async {
+    final auth = AuthService.instance;
+    if (auth.isGuest) {
+      final loggedIn = await AuthRequiredDialog.show(
+        context,
+        actionName: 'upload and monetize videos',
+      );
+      if (!loggedIn) return;
+    }
+    if (mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const UploadVideoScreen()),
+      ).then((_) => _loadStudio());
+    }
   }
 
   void _showRequestPayoutDialog(BuildContext context, CreatorStudioModel studio) {
@@ -173,8 +199,9 @@ class _StudioScreenState extends State<StudioScreen> {
                       return;
                     }
 
+                    final messenger = ScaffoldMessenger.of(context);
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    messenger.showSnackBar(
                       const SnackBar(content: Text('Submitting bank withdrawal request...')),
                     );
 
@@ -185,7 +212,7 @@ class _StudioScreenState extends State<StudioScreen> {
 
                     if (mounted) {
                       if (result['success'] == true) {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           SnackBar(
                             content: Text(result['message'] as String? ?? 'Payout request submitted successfully!'),
                             backgroundColor: AppColors.successGreen,
@@ -193,7 +220,7 @@ class _StudioScreenState extends State<StudioScreen> {
                         );
                         setState(() => _loadStudio());
                       } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           SnackBar(
                             content: Text(result['error'] as String? ?? 'Payout request failed.'),
                             backgroundColor: AppColors.rose,
@@ -305,6 +332,26 @@ class _StudioScreenState extends State<StudioScreen> {
                     : 'HDFC Bank (IFSC: HDFC0001234)',
               ),
               const SizedBox(height: 18),
+              if (!studio.isKycVerified) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _showKycSubmissionDialog(context, studio);
+                    },
+                    icon: const Icon(Icons.assignment_turned_in_rounded, size: 18),
+                    label: const Text('Submit / Update Bank KYC', style: TextStyle(fontWeight: FontWeight.w700)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryAccent,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
               SizedBox(
                 width: double.infinity,
                 child: TextButton.icon(
@@ -329,6 +376,318 @@ class _StudioScreenState extends State<StudioScreen> {
               ),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  void _showKycSubmissionDialog(BuildContext context, CreatorStudioModel studio) {
+    final auth = AuthService.instance;
+    if (auth.isGuest || auth.token == null) {
+      AuthSheet.show(context);
+      return;
+    }
+
+    final nameController = TextEditingController(text: studio.kycHolderName.isNotEmpty ? studio.kycHolderName : studio.creatorName);
+    final aadhaarController = TextEditingController(text: studio.kycAadhaar);
+    final panController = TextEditingController(text: studio.kycPan);
+    final bankNameController = TextEditingController(text: studio.kycBank.isNotEmpty ? studio.kycBank : 'HDFC Bank');
+    final accountController = TextEditingController(text: studio.kycAccount);
+    final ifscController = TextEditingController(text: studio.kycIfsc.isNotEmpty ? studio.kycIfsc : 'HDFC0001234');
+
+    bool isLoading = false;
+    String? errorText;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.cardSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 18,
+                bottom: bottomInset + 20,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceBorder,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    const Row(
+                      children: [
+                        Icon(Icons.assignment_turned_in_rounded, color: AppColors.primaryAccent, size: 24),
+                        SizedBox(width: 10),
+                        Text(
+                          'Submit Creator KYC Details',
+                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.primaryText),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Required for Indian banking compliance & creator monetization payouts.',
+                      style: TextStyle(fontSize: 12, color: AppColors.mutedText),
+                    ),
+                    const SizedBox(height: 14),
+
+                    if (errorText != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.rose.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(errorText!, style: const TextStyle(fontSize: 12, color: AppColors.rose)),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Legal Account Holder Name',
+                        prefixIcon: Icon(Icons.person_outline, size: 18),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: aadhaarController,
+                      keyboardType: TextInputType.number,
+                      maxLength: 12,
+                      decoration: const InputDecoration(
+                        labelText: 'Aadhaar Card Number (12 Digits)',
+                        counterText: '',
+                        prefixIcon: Icon(Icons.badge_outlined, size: 18),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: panController,
+                      textCapitalization: TextCapitalization.characters,
+                      maxLength: 10,
+                      decoration: const InputDecoration(
+                        labelText: 'PAN Card Number (e.g. ABCDE1234F)',
+                        counterText: '',
+                        prefixIcon: Icon(Icons.credit_card, size: 18),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: bankNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Bank Name (e.g. HDFC Bank, SBI)',
+                        prefixIcon: Icon(Icons.account_balance, size: 18),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: accountController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Bank Account Number',
+                        prefixIcon: Icon(Icons.numbers, size: 18),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: ifscController,
+                      textCapitalization: TextCapitalization.characters,
+                      maxLength: 11,
+                      decoration: const InputDecoration(
+                        labelText: 'IFSC Code (e.g. HDFC0001234)',
+                        counterText: '',
+                        prefixIcon: Icon(Icons.tag, size: 18),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 44,
+                      child: ElevatedButton(
+                        onPressed: isLoading
+                            ? null
+                            : () async {
+                                final name = nameController.text.trim();
+                                final aadhaar = aadhaarController.text.trim();
+                                final pan = panController.text.trim();
+                                final bankName = bankNameController.text.trim();
+                                final account = accountController.text.trim();
+                                final ifsc = ifscController.text.trim();
+
+                                if (name.isEmpty || aadhaar.length != 12 || pan.length != 10 || bankName.isEmpty || account.isEmpty || ifsc.length != 11) {
+                                  setModalState(() {
+                                    errorText = 'Please complete all fields with valid 12-digit Aadhaar, 10-char PAN, and 11-char IFSC.';
+                                  });
+                                  return;
+                                }
+
+                                setModalState(() {
+                                  isLoading = true;
+                                  errorText = null;
+                                });
+
+                                final res = await _apiService.submitKyc(
+                                  token: auth.token!,
+                                  pan: pan,
+                                  aadhaar: aadhaar,
+                                  bankAccount: account,
+                                  ifsc: ifsc,
+                                  bankName: bankName,
+                                  holderName: name,
+                                );
+
+                                if (res['success'] == true) {
+                                  if (context.mounted) {
+                                    Navigator.pop(ctx);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('KYC Submitted Successfully! Your details are pending fast verification.'),
+                                        backgroundColor: AppColors.successGreen,
+                                      ),
+                                    );
+                                    setState(() => _loadStudio());
+                                  }
+                                } else {
+                                  setModalState(() {
+                                    isLoading = false;
+                                    errorText = res['error'] as String? ?? 'KYC submission failed.';
+                                  });
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryAccent,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: isLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Text('Submit KYC Verification', style: TextStyle(fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showEditProfileDialog(BuildContext context, CreatorStudioModel studio) {
+    final auth = AuthService.instance;
+    if (auth.isGuest || auth.token == null) {
+      AuthSheet.show(context);
+      return;
+    }
+
+    final nameCtrl = TextEditingController(text: studio.creatorName);
+    final channelCtrl = TextEditingController(text: studio.channelName);
+    final bioCtrl = TextEditingController(text: studio.channelDescription);
+    bool isSaving = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.cardSurface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+            return Padding(
+              padding: EdgeInsets.only(left: 20, right: 20, top: 18, bottom: bottomInset + 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(color: AppColors.surfaceBorder, borderRadius: BorderRadius.circular(2)),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text('Edit Creator Channel Profile', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(labelText: 'Display Name', prefixIcon: Icon(Icons.person)),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: channelCtrl,
+                    decoration: const InputDecoration(labelText: 'Channel Name', prefixIcon: Icon(Icons.video_collection)),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: bioCtrl,
+                    maxLines: 2,
+                    decoration: const InputDecoration(labelText: 'Channel Bio / Description', prefixIcon: Icon(Icons.info_outline)),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: isSaving
+                        ? null
+                        : () async {
+                            setModalState(() => isSaving = true);
+                            final ok = await _apiService.updateProfile(
+                              token: auth.token!,
+                              name: nameCtrl.text.trim(),
+                              channelName: channelCtrl.text.trim(),
+                              channelDescription: bioCtrl.text.trim(),
+                            );
+                            if (ok && context.mounted) {
+                              if (auth.currentUser != null) {
+                                auth.updateCurrentUser(auth.currentUser!.copyWith(
+                                  name: nameCtrl.text.trim(),
+                                  channelName: channelCtrl.text.trim(),
+                                  channelDescription: bioCtrl.text.trim(),
+                                ));
+                              }
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Channel profile updated successfully!')),
+                              );
+                              setState(() => _loadStudio());
+                            } else {
+                              setModalState(() => isSaving = false);
+                            }
+                          },
+                    child: isSaving ? const CircularProgressIndicator() : const Text('Save Profile Changes'),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -370,7 +729,17 @@ class _StudioScreenState extends State<StudioScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_outlined),
-            onPressed: () {},
+            tooltip: 'Channel Settings',
+            onPressed: () {
+              final auth = AuthService.instance;
+              if (auth.isGuest) {
+                AuthSheet.show(context);
+              } else {
+                _studioFuture.then((s) {
+                  if (context.mounted) _showEditProfileDialog(context, s);
+                });
+              }
+            },
           ),
           IconButton(
             icon: const Icon(Icons.support_agent_rounded),
@@ -449,11 +818,182 @@ class _StudioScreenState extends State<StudioScreen> {
 
                 // 5. Recent Ledger Transactions
                 _buildLedgerTransactionsCard(studio),
+                const SizedBox(height: 16),
+
+                // 6. My Uploaded Content Manager
+                _buildMyUploadedContentCard(studio),
                 const SizedBox(height: 32),
               ],
             );
           },
         ),
+      ),
+    );
+  }
+
+  Widget _buildMyUploadedContentCard(CreatorStudioModel studio) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.cardSurface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.surfaceBorder),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.video_library_rounded, size: 20, color: AppColors.primaryAccent),
+                  SizedBox(width: 8),
+                  Text(
+                    'My Uploaded Content',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.primaryText),
+                  ),
+                ],
+              ),
+              TextButton.icon(
+                onPressed: _navigateToUpload,
+                icon: const Icon(Icons.add_rounded, size: 16),
+                label: const Text('Upload New', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          FutureBuilder<List<VideoModel>>(
+            future: _myVideosFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(color: AppColors.primaryAccent)));
+              }
+              final videos = snapshot.data ?? [];
+              if (videos.isEmpty) {
+                return Container(
+                  padding: const EdgeInsets.all(20),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.canvasBackground,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.cloud_upload_outlined, size: 36, color: AppColors.mutedText),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'No videos uploaded yet',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primaryText),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Upload 16:9 Landscape masterclasses or 9:16 Shorts to start monetizing watch time.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 11, color: AppColors.mutedText),
+                      ),
+                      const SizedBox(height: 12),
+                      ElevatedButton.icon(
+                        onPressed: _navigateToUpload,
+                        icon: const Icon(Icons.upload_file_rounded, size: 16),
+                        label: const Text('Upload First Video'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryAccent,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return Column(
+                children: videos.map((v) {
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.canvasBackground,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.surfaceBorder),
+                    ),
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            v.thumbnailUrl,
+                            width: 70,
+                            height: 44,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, error, stackTrace) => Container(
+                              width: 70,
+                              height: 44,
+                              color: Colors.black26,
+                              child: const Icon(Icons.play_circle_outline, size: 20),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                v.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 3),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: v.videoType == 'short' ? Colors.purple.withValues(alpha: 0.1) : AppColors.primaryAccent.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      v.videoType == 'short' ? '9:16 Short' : '16:9 Landscape',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w700,
+                                        color: v.videoType == 'short' ? Colors.purple : AppColors.primaryAccent,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '${v.viewsCount} views • ₹${v.totalEarned.toStringAsFixed(2)}',
+                                    style: const TextStyle(fontSize: 11, color: AppColors.mutedText),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppColors.successGreen.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            v.status.toUpperCase(),
+                            style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.successGreen),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+          ),
+        ],
       ),
     );
   }

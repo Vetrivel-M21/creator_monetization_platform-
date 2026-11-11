@@ -62,7 +62,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
         context,
         actionName: 'leave a comment',
       );
-      if (!loggedIn) return;
+      if (!loggedIn || !mounted) return;
     }
 
     setState(() => _isPosting = true);
@@ -88,7 +88,9 @@ class _CommentsSheetState extends State<CommentsSheet> {
       _comments.insert(0, optimisticComment);
     });
     _controller.clear();
-    FocusScope.of(context).unfocus();
+    if (mounted) {
+      FocusScope.of(context).unfocus();
+    }
 
     final posted = await _api.postComment(
       widget.videoId,
@@ -117,14 +119,14 @@ class _CommentsSheetState extends State<CommentsSheet> {
       height: MediaQuery.of(context).size.height * 0.72,
       decoration: const BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         children: [
           // 1. Drag Handle & Header
           Center(
             child: Container(
-              margin: const EdgeInsets.only(top: 8, bottom: 6),
+              margin: const EdgeInsets.only(top: 10, bottom: 8),
               width: 36,
               height: 4,
               decoration: BoxDecoration(
@@ -135,7 +137,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
           ),
 
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -147,6 +149,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
+                        letterSpacing: -0.3,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -168,7 +171,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
                   ],
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close, size: 20, color: AppColors.textSecondary),
+                  icon: const Icon(Icons.close_rounded, size: 20, color: AppColors.textSecondary),
                   onPressed: () => Navigator.pop(context),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
@@ -177,21 +180,28 @@ class _CommentsSheetState extends State<CommentsSheet> {
             ),
           ),
 
-          const Divider(),
+          const Divider(height: 1),
 
           // 2. Scrollable Comments List
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2))
                 : _comments.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'No comments yet. Start the conversation!',
-                          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            Icon(Icons.chat_bubble_outline_rounded, size: 40, color: AppColors.textSecondary),
+                            SizedBox(height: 10),
+                            Text(
+                              'No comments yet. Start the conversation!',
+                              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                            ),
+                          ],
                         ),
                       )
                     : ListView.separated(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                         itemCount: _comments.length,
                         separatorBuilder: (context, index) => const SizedBox(height: 16),
                         itemBuilder: (ctx, i) {
@@ -200,7 +210,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               CircleAvatar(
-                                radius: 18,
+                                radius: 17,
                                 backgroundColor: AppColors.secondaryBadge,
                                 backgroundImage: NetworkImage(c.avatar),
                               ),
@@ -214,7 +224,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
                                         Text(
                                           c.author,
                                           style: const TextStyle(
-                                            fontSize: 12,
+                                            fontSize: 12.5,
                                             fontWeight: FontWeight.w600,
                                             color: AppColors.textPrimary,
                                           ),
@@ -235,16 +245,16 @@ class _CommentsSheetState extends State<CommentsSheet> {
                                       style: const TextStyle(
                                         fontSize: 13,
                                         color: AppColors.textPrimary,
-                                        height: 1.3,
+                                        height: 1.35,
                                       ),
                                     ),
                                     const SizedBox(height: 6),
                                     Row(
                                       children: [
-                                        const Icon(Icons.thumb_up_alt_outlined, size: 14, color: AppColors.textSecondary),
+                                        const Icon(Icons.thumb_up_alt_outlined, size: 13, color: AppColors.textSecondary),
                                         const SizedBox(width: 4),
                                         Text(
-                                          c.likes > 0 ? '${c.likes}' : 'Reply',
+                                          c.likes > 0 ? '${c.likes}' : 'Like',
                                           style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
                                         ),
                                       ],
@@ -258,23 +268,22 @@ class _CommentsSheetState extends State<CommentsSheet> {
                       ),
           ),
 
-          // 3. Sticky Bottom Comment Input Bar
+          const Divider(height: 1),
+
+          // 3. Bottom Comment Input Bar
           Container(
-            padding: EdgeInsets.fromLTRB(16, 8, 16, 8 + bottomInset),
-            decoration: const BoxDecoration(
-              color: AppColors.surface,
-              border: Border(top: BorderSide(color: AppColors.surfaceBorder)),
-            ),
+            padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 12),
+            color: AppColors.surface,
             child: Row(
               children: [
                 CircleAvatar(
                   radius: 16,
-                  backgroundColor: AppColors.primary,
-                  backgroundImage: auth.currentUser != null && auth.currentUser!.channelLogo.isNotEmpty
-                      ? NetworkImage(auth.currentUser!.channelLogo)
+                  backgroundColor: AppColors.secondaryBadge,
+                  backgroundImage: auth.currentUser != null
+                      ? NetworkImage(auth.currentUser!.displayAvatar)
                       : null,
-                  child: auth.currentUser == null || auth.currentUser!.channelLogo.isEmpty
-                      ? const Text('Y', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold))
+                  child: auth.currentUser == null
+                      ? const Icon(Icons.person_outline, size: 18, color: AppColors.textSecondary)
                       : null,
                 ),
                 const SizedBox(width: 10),
@@ -283,18 +292,18 @@ class _CommentsSheetState extends State<CommentsSheet> {
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     decoration: BoxDecoration(
                       color: AppColors.scaffoldBackground,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: AppColors.surfaceBorder),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.surfaceBorder, width: 1),
                     ),
                     child: TextField(
                       controller: _controller,
-                      style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
-                      decoration: const InputDecoration(
-                        hintText: 'Add a comment...',
-                        hintStyle: TextStyle(fontSize: 13, color: AppColors.textMuted),
+                      decoration: InputDecoration(
+                        hintText: auth.isGuest ? 'Sign in to add a comment...' : 'Add a comment...',
+                        hintStyle: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
                         border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(vertical: 10),
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
                       ),
                       onSubmitted: (_) => _postComment(),
                     ),
