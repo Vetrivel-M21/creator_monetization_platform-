@@ -269,16 +269,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     try {
       setLoading(true);
       setErrorMessage(null);
-      const res = await authService.verifyOTP(email.trim().toLowerCase(), code);
+      const cleanEmail = email.trim().toLowerCase();
+      const res = await authService.verifyOTP(cleanEmail, code);
 
-      if (res.is_new_user) {
+      if (res.token && res.user) {
+        onAuthSuccess(res.token, res.user);
+        handleClose();
+      } else if (res.is_new_user) {
+        if (cleanEmail === 'admin@armss.com') {
+          setView('password_login');
+          setLoginIdentifier('admin@armss.com');
+          setErrorMessage('Please sign in with administrator credentials.');
+          return;
+        }
         // Automatically create account with email prefix
         const autoName = email.split('@')[0] || 'Creator';
         const regRes = await authService.registerWithOTP(autoName, email, `ARMSS_${Date.now()}`);
         onAuthSuccess(regRes.token, regRes.user);
-        handleClose();
-      } else if (res.token && res.user) {
-        onAuthSuccess(res.token, res.user);
         handleClose();
       }
     } catch (err: unknown) {
