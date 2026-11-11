@@ -338,10 +338,19 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	}
 	defaultAvatar := fmt.Sprintf("https://api.dicebear.com/7.x/bottts/svg?seed=%s", userID)
 
+	var mobileVal interface{}
+	if mobile != "" {
+		mobileVal = mobile
+	}
+	var emailVal interface{}
+	if email != "" {
+		emailVal = email
+	}
+
 	_, err = database.DB.ExecContext(r.Context(), `
 		INSERT INTO users (id, email, mobile, age, password_hash, name, channel_name, channel_logo, channel_description, role, tier, is_active, account_status, wallet_amount, silver_reward_paid, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'user', 'silver', 1, 'pending_approval', ?, 0, ?, ?)
-	`, userID, email, mobile, req.Age, string(hashedPassword), name, channelName, defaultAvatar, req.ChannelDescription, welcomeBonus, now, now)
+	`, userID, emailVal, mobileVal, req.Age, string(hashedPassword), name, channelName, defaultAvatar, req.ChannelDescription, welcomeBonus, now, now)
 
 	if err != nil {
 		http.Error(w, `{"error":"user with this email or mobile already exists"}`, http.StatusConflict)

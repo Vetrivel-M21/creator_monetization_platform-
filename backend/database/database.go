@@ -353,6 +353,8 @@ func createTables(driver string) error {
 	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN approved_by TEXT")
 	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN rejection_reason TEXT")
 	_, _ = DB.Exec("UPDATE users SET account_status = 'active' WHERE account_status IS NULL OR account_status = ''")
+	_, _ = DB.Exec("UPDATE users SET mobile = NULL WHERE mobile = ''")
+	_, _ = DB.Exec("UPDATE users SET email = NULL WHERE email = ''")
 
 	// Live Support Chat Tables
 	_, _ = DB.Exec(`

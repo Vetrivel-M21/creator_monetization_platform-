@@ -238,13 +238,18 @@ func GoogleLogin(w http.ResponseWriter, r *http.Request) {
 			UpdatedAt:          now,
 		}
 
+		var mobileVal interface{}
+		if strings.TrimSpace(u.Mobile) != "" {
+			mobileVal = u.Mobile
+		}
+
 		_, insertErr := database.DB.ExecContext(r.Context(), `
 			INSERT INTO users (
 				id, email, mobile, age, password_hash, name, 
 				channel_name, channel_logo, channel_description, 
 				role, tier, is_active, wallet_amount, silver_reward_paid, created_at, updated_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-		`, u.ID, u.Email, u.Mobile, u.Age, u.PasswordHash, u.Name,
+		`, u.ID, u.Email, mobileVal, u.Age, u.PasswordHash, u.Name,
 			u.ChannelName, u.ChannelLogo, u.ChannelDescription,
 			u.Role, u.Tier, 1, u.WalletAmount, u.CreatedAt, u.UpdatedAt)
 
