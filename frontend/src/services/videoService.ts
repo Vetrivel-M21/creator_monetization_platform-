@@ -4,18 +4,28 @@ import { formatDuration } from '../utils/formatters';
 
 const FALLBACK_VIDEOS: Video[] = [];
 
+function sanitizeMediaUrl(url: any): string {
+  if (!url || typeof url !== 'string') return '';
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && url.startsWith('http://')) {
+    return url.replace('http://', 'https://');
+  }
+  return url;
+}
+
 function normalizeVideo(v: any): Video {
   const durationMins = v.duration_minutes || (v.durationBucket === '30m' ? 30 : v.durationBucket === '20m' ? 20 : 10);
   const bucket = v.durationBucket || (durationMins >= 30 ? '30m' : durationMins >= 20 ? '20m' : durationMins >= 10 ? '10m' : durationMins >= 5 ? '5m' : '2m');
+  const hls = sanitizeMediaUrl(v.hls_url || v.hlsUrl);
+  const mp4 = sanitizeMediaUrl(v.video_url || v.videoUrl);
   return {
     ...v,
     duration_minutes: durationMins,
     duration: formatDuration(durationMins, v.duration),
     durationBucket: bucket,
-    video_url: v.video_url || v.videoUrl,
-    videoUrl: v.video_url || v.videoUrl,
-    hls_url: v.hls_url || v.hlsUrl,
-    hlsUrl: v.hls_url || v.hlsUrl,
+    video_url: mp4,
+    videoUrl: mp4,
+    hls_url: hls,
+    hlsUrl: hls,
     transcode_status: v.transcode_status || v.transcodeStatus || 'ready',
     transcodeStatus: v.transcode_status || v.transcodeStatus || 'ready',
     thumbnail_url: v.thumbnail_url || v.thumbnailUrl,

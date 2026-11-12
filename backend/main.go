@@ -77,6 +77,13 @@ func main() {
 	r.Handle("/thumbnails/*", http.StripPrefix("/thumbnails", http.FileServer(http.Dir("data/thumbnails"))))
 	r.Handle("/logos/*", http.StripPrefix("/logos", http.FileServer(http.Dir("data/logos"))))
 	r.Handle("/data/masters/*", http.StripPrefix("/data/masters", http.FileServer(http.Dir("data/masters"))))
+	r.Handle("/data/hls/*", http.StripPrefix("/data/hls", http.FileServer(http.Dir("data/hls"))))
+
+	// Root-level Playback Routes (for direct /playback proxy support)
+	r.Get("/playback/{id}/master.m3u8", playback.ServeMasterPlaylist)
+	r.Head("/playback/{id}/master.m3u8", playback.ServeMasterPlaylist)
+	r.Get("/playback/{id}/{file}", playback.ServeSegmentFile)
+	r.Head("/playback/{id}/{file}", playback.ServeSegmentFile)
 
 	// 4. API Routes
 	r.Route("/api", func(r chi.Router) {

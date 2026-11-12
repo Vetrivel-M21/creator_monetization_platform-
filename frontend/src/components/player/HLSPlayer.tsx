@@ -73,7 +73,12 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
     setErrorMsg(null);
     setIsBuffering(true);
 
-    const isHlsStream = src.includes('.m3u8') || src.includes('/api/playback/');
+    let activeSrc = src;
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && activeSrc.startsWith('http://')) {
+      activeSrc = activeSrc.replace('http://', 'https://');
+    }
+
+    const isHlsStream = activeSrc.includes('.m3u8') || activeSrc.includes('/api/playback/') || activeSrc.includes('/playback/');
 
     // Destroy existing Hls instance
     if (hlsRef.current) {
@@ -88,10 +93,16 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
         backBufferLength: 30,
         enableWorker: true,
         lowLatencyMode: false,
+        xhrSetup: (xhr, url) => {
+          if (typeof window !== 'undefined' && window.location.protocol === 'https:' && url.startsWith('http://')) {
+            const secureUrl = url.replace('http://', 'https://');
+            xhr.open('GET', secureUrl, true);
+          }
+        },
       });
       hlsRef.current = hls;
 
-      hls.loadSource(src);
+      hls.loadSource(activeSrc);
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {

@@ -93,28 +93,48 @@ func extractPlaybackToken(r *http.Request) string {
 	return ""
 }
 
-// GetPublicAPIBaseURL returns the configured public API host or infers from incoming request
+func isLocalHost(host string) bool {
+	h := strings.ToLower(host)
+	if idx := strings.Index(h, ":"); idx != -1 {
+		h = h[:idx]
+	}
+	return h == "localhost" || h == "127.0.0.1" || h == "::1" || h == "backend" || strings.HasSuffix(h, ".local")
+}
+
+// GetPublicAPIBaseURL returns the configured public API host or infers from incoming request.
+// It ensures public domains (like entertainment.aurapictures.online) ALWAYS use https:// to prevent mixed-content blocks.
 func GetPublicAPIBaseURL(r *http.Request) string {
 	baseURL := strings.TrimRight(os.Getenv("PUBLIC_API_BASE_URL"), "/")
 	if baseURL != "" {
+		if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
+			return "https://" + baseURL
+		}
+		if strings.HasPrefix(baseURL, "http://entertainment.aurapictures.online") {
+			return strings.Replace(baseURL, "http://", "https://", 1)
+		}
 		return baseURL
 	}
 
-	scheme := "http"
 	if r != nil {
-		if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
-			scheme = proto
-		} else if r.TLS != nil {
-			scheme = "https"
-		}
 		host := r.Header.Get("X-Forwarded-Host")
 		if host == "" {
 			host = r.Host
 		}
 		if host != "" {
-			return fmt.Sprintf("%s://%s", scheme, host)
+			if isLocalHost(host) {
+				scheme := "http"
+				if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+					scheme = proto
+				} else if r.TLS != nil {
+					scheme = "https"
+				}
+				return fmt.Sprintf("%s://%s", scheme, host)
+			}
+			// Public domain (e.g. entertainment.aurapictures.online) - ALWAYS HTTPS!
+			return fmt.Sprintf("https://%s", host)
 		}
 	}
+
 	// Production fallback
 	return "https://entertainment.aurapictures.online"
 }

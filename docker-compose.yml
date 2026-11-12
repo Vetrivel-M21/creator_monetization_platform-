@@ -47,6 +47,8 @@ services:
       - MYSQL_USER=${DB_USER:-creator_user}
       - MYSQL_PASSWORD=${DB_PASSWORD:-creator_pass@2026}
       - MYSQL_DATABASE=${DB_NAME:-creator_platform}
+      - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL:-https://entertainment.aurapictures.online}
+      - PLAYBACK_TOKEN_REQUIRED=${PLAYBACK_TOKEN_REQUIRED:-false}
     # Internal only: backend communicates with frontend via armss-net
     expose:
       - "2085"
