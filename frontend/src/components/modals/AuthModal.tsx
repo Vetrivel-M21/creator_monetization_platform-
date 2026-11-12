@@ -307,10 +307,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     try {
       setLoading(true);
       setErrorMessage(null);
+      const cleanEmail = email.trim().toLowerCase();
+
       // 1. Verify OTP
-      await authService.verifyOTP(email.trim().toLowerCase(), code);
+      const res = await authService.verifyOTP(cleanEmail, code);
+
+      // If user already exists (e.g. admin or existing creator), sign in immediately
+      if (res.token && res.user) {
+        onAuthSuccess(res.token, res.user);
+        handleClose();
+        return;
+      }
+
       // 2. Register with Name, Email & Password
-      const regRes = await authService.registerWithOTP(name.trim(), email.trim().toLowerCase(), password);
+      const regRes = await authService.registerWithOTP(name.trim(), cleanEmail, password);
       onAuthSuccess(regRes.token, regRes.user);
       handleClose();
     } catch (err: unknown) {
