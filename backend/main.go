@@ -100,6 +100,7 @@ func main() {
 
 		// Public Videos & Feed
 		r.Get("/videos", handlers.ListVideos)
+		r.With(middleware.RequireAuth).Get("/videos/{id}/playback", playback.GetPlaybackTicket)
 		r.With(middleware.RequireAuth).Post("/videos", handlers.CreateVideo)
 		r.With(middleware.RequireAuth).Post("/videos/upload", handlers.UploadVideo)
 		r.Post("/videos/{id}/like", handlers.LikeVideo)

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -116,11 +117,31 @@ func UploadVideo(w http.ResponseWriter, r *http.Request) {
 		thumbnailURL = fmt.Sprintf("https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1280&q=80")
 	}
 
-	// Probe video duration
+	// Probe video duration (default fallback 2.0 min)
 	durationMinutes := 2.0
 	meta, pErr := transcode.ProbeVideo(r.Context(), masterLocalPath)
 	if pErr == nil && meta.Duration > 0 {
 		durationMinutes = meta.Duration / 60.0
+	}
+
+	// User-selected duration bucket takes precedence if explicitly specified
+	if dStr := strings.TrimSpace(r.FormValue("duration_minutes")); dStr != "" {
+		if dVal, err := strconv.ParseFloat(dStr, 64); err == nil && dVal > 0 {
+			durationMinutes = dVal
+		}
+	} else if bStr := strings.TrimSpace(r.FormValue("duration_bucket")); bStr != "" {
+		switch strings.ToLower(bStr) {
+		case "30m":
+			durationMinutes = 30.0
+		case "20m":
+			durationMinutes = 20.0
+		case "10m":
+			durationMinutes = 10.0
+		case "5m":
+			durationMinutes = 5.0
+		case "2m":
+			durationMinutes = 2.0
+		}
 	}
 
 	// Lookup creator information

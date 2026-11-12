@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/video_model.dart';
 import '../../../data/services/api_service.dart';
@@ -115,15 +116,80 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
     }
   }
 
+  Future<String> _resolveStreamUrl(VideoModel video) async {
+    final auth = AuthService.instance;
+    try {
+      final ticket = await _api.fetchPlaybackTicket(video.id, token: auth.token);
+      if (ticket != null) {
+        final ticketHls = ticket['hls_url']?.toString();
+        if (ticketHls != null && ticketHls.isNotEmpty) {
+          return ApiConstants.toAbsoluteUrl(ticketHls);
+        }
+      }
+    } catch (_) {}
+
+    if (video.hlsUrl.isNotEmpty && video.isTranscodeReady) {
+      return ApiConstants.toAbsoluteUrl(video.hlsUrl);
+    }
+    if (video.videoUrl.isNotEmpty) {
+      return ApiConstants.toAbsoluteUrl(video.videoUrl);
+    }
+    if (video.hlsUrl.isNotEmpty) {
+      return ApiConstants.toAbsoluteUrl(video.hlsUrl);
+    }
+    return '';
+  }
+
   VideoPlayerController? _getOrCreateController(int index) {
     if (index < 0 || index >= _shorts.length) return null;
     if (_controllers.containsKey(index)) return _controllers[index];
 
     final video = _shorts[index];
-    final streamUrl = video.videoUrl.isNotEmpty ? video.videoUrl : video.hlsUrl;
-    if (streamUrl.isEmpty) return null;
-    final uri = Uri.parse(streamUrl);
-    final controller = VideoPlayerController.networkUrl(uri);
+    if (video.isTranscodeProcessing) {
+      return null;
+    }
+
+    String initialUrl = '';
+    if (video.hlsUrl.isNotEmpty && video.isTranscodeReady) {
+      initialUrl = ApiConstants.toAbsoluteUrl(video.hlsUrl);
+    } else if (video.videoUrl.isNotEmpty) {
+      initialUrl = ApiConstants.toAbsoluteUrl(video.videoUrl);
+    } else if (video.hlsUrl.isNotEmpty) {
+      initialUrl = ApiConstants.toAbsoluteUrl(video.hlsUrl);
+    }
+
+    if (initialUrl.isEmpty) return null;
+
+    final controller = VideoPlayerController.networkUrl(Uri.parse(initialUrl));
+    _controllers[index] = controller;
+
+    // Async ticket check to ensure token is valid for playback routes
+    _resolveStreamUrl(video).then((ticketUrl) {
+      if (ticketUrl.isNotEmpty && ticketUrl != initialUrl && mounted) {
+        if (!_controllers.containsKey(index) || _controllers[index] != controller) return;
+        final currentPos = controller.value.position;
+        final wasPlaying = controller.value.isPlaying;
+        final newController = VideoPlayerController.networkUrl(Uri.parse(ticketUrl));
+        _controllers[index] = newController;
+        newController.initialize().then((_) {
+          if (mounted) {
+            controller.dispose();
+            newController.setLooping(true);
+            newController.setVolume(_isMuted ? 0.0 : 1.0);
+            if (currentPos > Duration.zero) {
+              newController.seekTo(currentPos);
+            }
+            if (wasPlaying && index == _currentIndex && widget.isActive) {
+              newController.play();
+            }
+            setState(() {});
+          }
+        }).catchError((_) {
+          // Keep old controller if ticket initialization fails
+          _controllers[index] = controller;
+        });
+      }
+    });
 
     controller.initialize().then((_) {
       if (mounted) {
@@ -144,7 +210,6 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
       }
     });
 
-    _controllers[index] = controller;
     return controller;
   }
 
@@ -338,7 +403,14 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
   void _onScrubEnd() {
     final controller = _controllers[_currentIndex];
     if (controller != null && controller.value.isInitialized) {
-      final target = controller.value.duration * _scrubProgress;
+      final video = _shorts[_currentIndex];
+      final fallbackSecs = (video.durationMinutes > 0)
+          ? (video.durationMinutes * 60).round()
+          : 60;
+      final dur = controller.value.duration.inMilliseconds > 0
+          ? controller.value.duration
+          : Duration(seconds: fallbackSecs);
+      final target = dur * _scrubProgress;
       controller.seekTo(target);
     }
     setState(() {
@@ -403,8 +475,52 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // 1. Full-Screen Native Video Player or Fallback Thumbnail
-                if (isInitialized)
+                // 1. Full-Screen Native Video Player or Fallback Thumbnail or Processing State
+                if (video.isTranscodeProcessing)
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 28),
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.5)),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(
+                            width: 30,
+                            height: 30,
+                            child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2.5),
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Optimizing Short (CMAF Transcoding)...',
+                            style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Adaptive vertical stream is being processed. Ready shortly.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.white70, fontSize: 11),
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton.icon(
+                            onPressed: _loadShorts,
+                            icon: const Icon(Icons.refresh_rounded, size: 14),
+                            label: const Text('Refresh Feed', style: TextStyle(fontSize: 12)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else if (isInitialized)
                   SizedBox.expand(
                     child: FittedBox(
                       fit: BoxFit.cover,
@@ -706,13 +822,16 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
                     builder: (context, constraints) {
                       final width = constraints.maxWidth;
                       final pos = isInitialized ? controller.value.position : Duration.zero;
+                      final fallbackSecs = (video.durationMinutes > 0)
+                          ? (video.durationMinutes * 60).round()
+                          : 60;
                       final dur = isInitialized && controller.value.duration.inMilliseconds > 0
                           ? controller.value.duration
-                          : const Duration(seconds: 1);
+                          : Duration(seconds: fallbackSecs);
 
                       final currentFraction = _isScrubbing
                           ? _scrubProgress
-                          : (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0);
+                          : (dur.inMilliseconds > 0 ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0) : 0.0);
 
                       final currentTimeFormatted = _isScrubbing
                           ? _formatDuration(dur * _scrubProgress)

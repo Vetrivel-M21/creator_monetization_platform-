@@ -1,3 +1,5 @@
+import '../../core/constants/api_constants.dart';
+
 class UserModel {
   final String id;
   final String email;
@@ -67,6 +69,8 @@ class UserModel {
 
   UserModel copyWith({
     String? name,
+    String? mobile,
+    int? age,
     String? channelName,
     String? channelLogo,
     String? channelDescription,
@@ -77,8 +81,8 @@ class UserModel {
       id: id,
       email: email,
       name: name ?? this.name,
-      mobile: mobile,
-      age: age,
+      mobile: mobile ?? this.mobile,
+      age: age ?? this.age,
       channelName: channelName ?? this.channelName,
       channelLogo: channelLogo ?? this.channelLogo,
       channelDescription: channelDescription ?? this.channelDescription,
@@ -91,8 +95,13 @@ class UserModel {
   }
 
   String get displayName => channelName.isNotEmpty ? channelName : (name.isNotEmpty ? name : 'Creator');
-  String get displayAvatar => channelLogo.isNotEmpty
-      ? channelLogo
-      : 'https://api.dicebear.com/7.x/bottts/svg?seed=$id';
+  String get displayAvatar {
+    if (channelLogo.isNotEmpty) {
+      if (channelLogo.startsWith('http')) return channelLogo;
+      final serverRoot = ApiConstants.baseUrl.replaceAll('/api', '');
+      return '$serverRoot$channelLogo';
+    }
+    return 'https://api.dicebear.com/7.x/bottts/svg?seed=$id';
+  }
 }
 

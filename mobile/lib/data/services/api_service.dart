@@ -124,6 +124,23 @@ class ApiService {
     return fetchVideos(videoType: 'short');
   }
 
+  /// Obtains a short-lived signed playback ticket with absolute HLS stream URL bound to videoId
+  Future<Map<String, dynamic>?> fetchPlaybackTicket(String videoId, {String? token}) async {
+    try {
+      final res = await http
+          .get(
+            Uri.parse('$baseUrl/videos/$videoId/playback'),
+            headers: _headers(token),
+          )
+          .timeout(ApiConstants.requestTimeout);
+      _checkUnauthorized(res.statusCode, token);
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Social Actions (Like, Share, View, Subscribe)
   // ─────────────────────────────────────────────────────────────────────────────
@@ -376,6 +393,8 @@ class ApiService {
     required String description,
     required String category,
     required String videoType,
+    double? durationMinutes,
+    String? durationBucket,
     String? token,
     void Function(double progress)? onProgress,
   }) async {
@@ -391,6 +410,12 @@ class ApiService {
       request.fields['description'] = description;
       request.fields['category'] = category;
       request.fields['video_type'] = videoType;
+      if (durationMinutes != null && durationMinutes > 0) {
+        request.fields['duration_minutes'] = durationMinutes.toString();
+      }
+      if (durationBucket != null && durationBucket.isNotEmpty) {
+        request.fields['duration_bucket'] = durationBucket;
+      }
 
       final videoFile = File(filePath);
       if (!await videoFile.exists()) return false;
@@ -613,9 +638,11 @@ class ApiService {
     return [];
   }
 
-  Future<bool> updateProfile({
+  Future<UserModel?> updateProfile({
     required String token,
     required String name,
+    required int age,
+    required String mobile,
     required String channelName,
     required String channelDescription,
   }) async {
@@ -626,16 +653,46 @@ class ApiService {
             headers: _headers(token),
             body: jsonEncode({
               'name': name.trim(),
+              'age': age,
+              'mobile': mobile.trim(),
               'channel_name': channelName.trim(),
               'channel_description': channelDescription.trim(),
             }),
           )
           .timeout(ApiConstants.requestTimeout);
       _checkUnauthorized(res.statusCode, token);
-      return res.statusCode == 200;
-    } catch (_) {
-      return false;
-    }
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['user'] != null) {
+          return UserModel.fromJson(data['user'], token: token);
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<String?> uploadChannelLogo({
+    required String token,
+    required String filePath,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/user/channel-logo');
+      final request = http.MultipartRequest('POST', uri);
+      request.headers['Authorization'] = 'Bearer $token';
+
+      final file = File(filePath);
+      if (!await file.exists()) return null;
+      request.files.add(await http.MultipartFile.fromPath('logo', filePath));
+
+      final streamedResponse = await request.send().timeout(ApiConstants.uploadTimeout);
+      final response = await http.Response.fromStream(streamedResponse);
+      _checkUnauthorized(response.statusCode, token);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        return data['logo_url']?.toString();
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<List<VideoModel>> fetchHomeVideos() => fetchLandscapeVideos();

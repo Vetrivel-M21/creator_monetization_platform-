@@ -21,6 +21,7 @@ import (
 	"creator-monetization-backend/middleware"
 	"creator-monetization-backend/models"
 	emailService "creator-monetization-backend/services/email"
+	"creator-monetization-backend/services/playback"
 
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -625,6 +626,10 @@ func ListVideos(w http.ResponseWriter, r *http.Request) {
 			&v.ViewsCount, &v.LikesCount, &v.SharesCount, &v.CommentsCount, &v.TotalWatchMins,
 			&v.TotalEarned, &v.CreatedAt, &v.UpdatedAt,
 		); err == nil {
+			if v.TranscodeStatus == "ready" || v.HLSURL != "" {
+				token, _ := playback.GeneratePlaybackToken(v.ID, 4*time.Hour)
+				v.HLSURL = fmt.Sprintf("/api/playback/%s/master.m3u8?token=%s", v.ID, token)
+			}
 			videos = append(videos, v)
 		}
 	}
@@ -1210,6 +1215,10 @@ func AdminListVideos(w http.ResponseWriter, r *http.Request) {
 			&v.ViewsCount, &v.LikesCount, &v.SharesCount, &v.CommentsCount, &v.TotalWatchMins,
 			&v.TotalEarned, &v.CreatedAt, &v.UpdatedAt,
 		); err == nil {
+			if v.TranscodeStatus == "ready" || v.HLSURL != "" {
+				token, _ := playback.GeneratePlaybackToken(v.ID, 4*time.Hour)
+				v.HLSURL = fmt.Sprintf("/api/playback/%s/master.m3u8?token=%s", v.ID, token)
+			}
 			videos = append(videos, v)
 		}
 	}

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/video_model.dart';
 import '../../../data/services/api_service.dart';
@@ -26,6 +27,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
 
   bool _isPlayerInitialized = false;
   bool _hasPlayerError = false;
+  bool _isProcessingTranscode = false;
   double? _dragValue;
   bool _showControls = true;
   bool _isMuted = false;
@@ -83,25 +85,73 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
     super.dispose();
   }
 
-  void _initializePlayer() {
+  Future<void> _initializePlayer() async {
     _playerController?.dispose();
     _playerController = null;
     setState(() {
       _isPlayerInitialized = false;
       _hasPlayerError = false;
+      _isProcessingTranscode = _currentVideo.isTranscodeProcessing;
     });
 
-    final primaryUrl = _currentVideo.videoUrl.isNotEmpty ? _currentVideo.videoUrl : _currentVideo.hlsUrl;
-    if (primaryUrl.isEmpty) {
-      setState(() => _hasPlayerError = true);
+    // 1. If video is processing ABR ladders, do not initialize player on broken ladder
+    if (_currentVideo.isTranscodeProcessing) {
       return;
     }
 
-    _loadStream(primaryUrl, fallbackUrl: _currentVideo.hlsUrl != primaryUrl ? _currentVideo.hlsUrl : null);
+    final auth = AuthService.instance;
+    String streamUrl = '';
+    String? fallbackUrl;
+
+    // 2. Prefer API playback ticket endpoint (GET /api/videos/{id}/playback)
+    try {
+      final ticket = await _api.fetchPlaybackTicket(_currentVideo.id, token: auth.token);
+      if (ticket != null) {
+        final ticketStatus = ticket['transcode_status']?.toString();
+        if (ticketStatus == 'processing' || ticketStatus == 'pending') {
+          if (mounted) {
+            setState(() {
+              _isProcessingTranscode = true;
+              _currentVideo = _currentVideo.copyWith(transcodeStatus: 'processing');
+            });
+          }
+          return;
+        }
+        final ticketHls = ticket['hls_url']?.toString();
+        if (ticketHls != null && ticketHls.isNotEmpty) {
+          streamUrl = ApiConstants.toAbsoluteUrl(ticketHls);
+        }
+      }
+    } catch (_) {}
+
+    // 3. Fallback to video.hlsUrl / video.videoUrl from list API (always absolute)
+    if (streamUrl.isEmpty) {
+      if (_currentVideo.hlsUrl.isNotEmpty && _currentVideo.isTranscodeReady) {
+        streamUrl = ApiConstants.toAbsoluteUrl(_currentVideo.hlsUrl);
+        if (_currentVideo.videoUrl.isNotEmpty) {
+          fallbackUrl = ApiConstants.toAbsoluteUrl(_currentVideo.videoUrl);
+        }
+      } else if (_currentVideo.videoUrl.isNotEmpty) {
+        streamUrl = ApiConstants.toAbsoluteUrl(_currentVideo.videoUrl);
+        if (_currentVideo.hlsUrl.isNotEmpty) {
+          fallbackUrl = ApiConstants.toAbsoluteUrl(_currentVideo.hlsUrl);
+        }
+      } else if (_currentVideo.hlsUrl.isNotEmpty) {
+        streamUrl = ApiConstants.toAbsoluteUrl(_currentVideo.hlsUrl);
+      }
+    }
+
+    if (streamUrl.isEmpty) {
+      if (mounted) setState(() => _hasPlayerError = true);
+      return;
+    }
+
+    _loadStream(streamUrl, fallbackUrl: fallbackUrl != streamUrl ? fallbackUrl : null);
   }
 
   void _loadStream(String url, {String? fallbackUrl}) {
-    final uri = Uri.parse(url);
+    final absoluteUrl = ApiConstants.toAbsoluteUrl(url);
+    final uri = Uri.parse(absoluteUrl);
     final controller = VideoPlayerController.networkUrl(uri);
     _playerController = controller;
 
@@ -110,11 +160,12 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
         setState(() {
           _isPlayerInitialized = true;
           _hasPlayerError = false;
+          _isProcessingTranscode = false;
         });
         controller.play();
       }
     }).catchError((err) {
-      if (fallbackUrl != null && fallbackUrl.isNotEmpty) {
+      if (fallbackUrl != null && fallbackUrl.isNotEmpty && fallbackUrl != url) {
         _loadStream(fallbackUrl);
       } else if (mounted) {
         setState(() {
@@ -243,7 +294,51 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
             ),
 
           // Error Overlay or Buffering Spinner
-          if (_hasPlayerError)
+          if (_isProcessingTranscode)
+            Center(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 24),
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.5)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2.5),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Optimizing Stream (CMAF Transcoding)...',
+                      style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Multi-bitrate ladders are being generated. Ready shortly.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white70, fontSize: 11),
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: _initializePlayer,
+                      icon: const Icon(Icons.refresh_rounded, size: 14),
+                      label: const Text('Check Status', style: TextStyle(fontSize: 12)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (_hasPlayerError)
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -382,7 +477,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
                       thumbColor: AppColors.primary,
                     ),
                     child: Slider(
-                      value: _dragValue ?? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0),
+                      value: _dragValue ?? (dur.inMilliseconds > 0 ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0) : 0.0),
                       onChangeStart: (val) {
                         setState(() => _dragValue = val);
                       },
@@ -410,9 +505,12 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
     final pos = _isPlayerInitialized && _playerController != null
         ? _playerController!.value.position
         : Duration.zero;
+    final fallbackSecs = (_currentVideo.durationMinutes > 0)
+        ? (_currentVideo.durationMinutes * 60).round()
+        : 60;
     final dur = _isPlayerInitialized && _playerController != null && _playerController!.value.duration.inMilliseconds > 0
         ? _playerController!.value.duration
-        : const Duration(seconds: 1);
+        : Duration(seconds: fallbackSecs);
 
     if (_isFullscreen) {
       return Scaffold(

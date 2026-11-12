@@ -30,6 +30,17 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
   String? _thumbnailFileName;
 
   late String _selectedFormat; // 'landscape' or 'short'
+  late String _selectedDurationBucket;
+  late double _selectedDurationMinutes;
+
+  static const List<Map<String, dynamic>> _durationBuckets = [
+    {'value': '30m', 'label': '30+ Min', 'note': 'Long-form episode', 'minutes': 30.0},
+    {'value': '20m', 'label': '20 - 29 Min', 'note': 'Deep-dive session', 'minutes': 20.0},
+    {'value': '10m', 'label': '10 - 19 Min', 'note': 'Standard feature', 'minutes': 10.0},
+    {'value': '5m', 'label': '5 - 9 Min', 'note': 'Mid-length release', 'minutes': 5.0},
+    {'value': '2m', 'label': '2 - 4 Min', 'note': 'Short & quick watch', 'minutes': 2.0},
+  ];
+
   List<CategoryModel> _categories = [];
   CategoryModel? _selectedCategory;
 
@@ -41,6 +52,13 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
   void initState() {
     super.initState();
     _selectedFormat = widget.initialFormat;
+    if (_selectedFormat == 'short') {
+      _selectedDurationBucket = '2m';
+      _selectedDurationMinutes = 2.0;
+    } else {
+      _selectedDurationBucket = '10m';
+      _selectedDurationMinutes = 10.0;
+    }
     _loadCategories();
   }
 
@@ -135,6 +153,8 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
       description: _descriptionController.text.trim(),
       category: _selectedCategory?.slug ?? 'promotion',
       videoType: _selectedFormat,
+      durationMinutes: _selectedDurationMinutes,
+      durationBucket: _selectedDurationBucket,
       token: auth.token,
       onProgress: (p) => setState(() => _uploadProgress = p),
     );
@@ -240,7 +260,90 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
             ),
             const SizedBox(height: 20),
 
-            // 2. Video File Picker
+            // 2. Target Duration Bucket (Tier Quotas)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Target Duration Bucket',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'Selected: $_selectedDurationBucket',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _durationBuckets.map((bucket) {
+                final isSelected = _selectedDurationBucket == bucket['value'];
+                return InkWell(
+                  onTap: () {
+                    setState(() {
+                      _selectedDurationBucket = bucket['value'] as String;
+                      _selectedDurationMinutes = bucket['minutes'] as double;
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    width: (MediaQuery.of(context).size.width - 32 - 16) / 3,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppColors.primary.withValues(alpha: 0.08) : AppColors.surface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isSelected ? AppColors.primary : AppColors.surfaceBorder,
+                        width: isSelected ? 2 : 1,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              bucket['label'] as String,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: isSelected ? AppColors.primary : AppColors.textPrimary,
+                              ),
+                            ),
+                            if (isSelected)
+                              const Icon(Icons.check_circle_rounded, size: 14, color: AppColors.primary),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          bucket['note'] as String,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                            height: 1.1,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 20),
+
+            // 3. Video Master File
             const Text(
               'Video Master File',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
@@ -480,7 +583,18 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
     final isSelected = _selectedFormat == format;
 
     return InkWell(
-      onTap: () => setState(() => _selectedFormat = format),
+      onTap: () {
+        setState(() {
+          _selectedFormat = format;
+          if (format == 'short' && _selectedDurationBucket != '2m' && _selectedDurationBucket != '5m') {
+            _selectedDurationBucket = '2m';
+            _selectedDurationMinutes = 2.0;
+          } else if (format == 'landscape' && _selectedDurationBucket == '2m') {
+            _selectedDurationBucket = '10m';
+            _selectedDurationMinutes = 10.0;
+          }
+        });
+      },
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.all(12),

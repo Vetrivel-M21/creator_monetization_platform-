@@ -32,6 +32,27 @@ class ApiConstants {
     }
   }
 
+  /// Base root URL without trailing '/api'
+  static String get serverRoot {
+    final base = baseUrl.trim();
+    if (base.endsWith('/api')) {
+      return base.substring(0, base.length - 4);
+    }
+    return base;
+  }
+
+  /// Converts relative path into absolute URL using the active environment
+  static String toAbsoluteUrl(String path) {
+    final clean = path.trim();
+    if (clean.isEmpty) return clean;
+    if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('blob:')) {
+      return clean;
+    }
+    final root = serverRoot.replaceAll(RegExp(r'/+$'), '');
+    final p = clean.startsWith('/') ? clean : '/$clean';
+    return '$root$p';
+  }
+
   // Reasonable timeouts
   static const Duration connectTimeout = Duration(seconds: 15);
   static const Duration requestTimeout = Duration(seconds: 15);

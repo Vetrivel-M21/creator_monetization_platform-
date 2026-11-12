@@ -1,17 +1,10 @@
+import '../../core/constants/api_constants.dart';
 import '../../core/utils/date_formatter.dart';
 
 class VideoModel {
-  static const String serverBase = 'https://entertainment.aurapictures.online';
-
   static String resolveUrl(String? url) {
     if (url == null || url.isEmpty) return '';
-    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) {
-      return url;
-    }
-    if (url.startsWith('/')) {
-      return '$serverBase$url';
-    }
-    return '$serverBase/$url';
+    return ApiConstants.toAbsoluteUrl(url);
   }
 
   final String id;
@@ -33,6 +26,7 @@ class VideoModel {
   final int likesCount;
   final int commentsCount;
   final String status;
+  final String transcodeStatus; // 'processing', 'ready', 'failed'
   final double totalEarned;
   final bool isLiked;
   final bool isSaved;
@@ -59,6 +53,7 @@ class VideoModel {
     this.likesCount = 0,
     this.commentsCount = 0,
     this.status = 'approved',
+    this.transcodeStatus = 'ready',
     this.totalEarned = 0.0,
     this.isLiked = false,
     this.isSaved = false,
@@ -67,6 +62,11 @@ class VideoModel {
   });
 
   bool get isShort => videoType == 'short';
+  bool get isTranscodeReady => transcodeStatus.toLowerCase() == 'ready';
+  bool get isTranscodeProcessing =>
+      transcodeStatus.toLowerCase() == 'processing' ||
+      transcodeStatus.toLowerCase() == 'pending';
+  bool get isTranscodeFailed => transcodeStatus.toLowerCase() == 'failed';
   String get timeAgo => formatTimeAgo(createdAt);
   String get displayCategory => formatCategoryTitle(category);
 
@@ -78,6 +78,7 @@ class VideoModel {
     int? commentsCount,
     int? viewsCount,
     String? status,
+    String? transcodeStatus,
     double? totalEarned,
   }) {
     return VideoModel(
@@ -100,6 +101,7 @@ class VideoModel {
       likesCount: likesCount ?? this.likesCount,
       commentsCount: commentsCount ?? this.commentsCount,
       status: status ?? this.status,
+      transcodeStatus: transcodeStatus ?? this.transcodeStatus,
       totalEarned: totalEarned ?? this.totalEarned,
       isLiked: isLiked ?? this.isLiked,
       isSaved: isSaved ?? this.isSaved,
@@ -185,6 +187,7 @@ class VideoModel {
       likesCount: (json['likes_count'] as num?)?.toInt() ?? 0,
       commentsCount: (json['comments_count'] as num?)?.toInt() ?? 0,
       status: json['status']?.toString() ?? 'approved',
+      transcodeStatus: json['transcode_status']?.toString() ?? 'ready',
       totalEarned: (json['total_earned'] as num?)?.toDouble() ?? 0.0,
       createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now() : DateTime.now(),
     );
