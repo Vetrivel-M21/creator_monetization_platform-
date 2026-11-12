@@ -148,6 +148,19 @@ func parseDBTimeString(val string) time.Time {
 }
 
 func ensureAdminUser(ctx context.Context) {
+	// Ensure account_status and other columns exist on users table
+	_, _ = database.DB.ExecContext(ctx, "ALTER TABLE users ADD COLUMN account_status VARCHAR(32) DEFAULT 'active'")
+	_, _ = database.DB.ExecContext(ctx, "ALTER TABLE users ADD COLUMN age INT DEFAULT 0")
+	_, _ = database.DB.ExecContext(ctx, "ALTER TABLE users ADD COLUMN channel_name VARCHAR(255)")
+	_, _ = database.DB.ExecContext(ctx, "ALTER TABLE users ADD COLUMN channel_logo TEXT")
+	_, _ = database.DB.ExecContext(ctx, "ALTER TABLE users ADD COLUMN channel_description TEXT")
+	_, _ = database.DB.ExecContext(ctx, "ALTER TABLE users ADD COLUMN silver_reward_paid INT DEFAULT 0")
+	_, _ = database.DB.ExecContext(ctx, "ALTER TABLE users ADD COLUMN silver_reward_paid_at DATETIME")
+	_, _ = database.DB.ExecContext(ctx, "ALTER TABLE users ADD COLUMN gold_reward_paid INT DEFAULT 0")
+	_, _ = database.DB.ExecContext(ctx, "ALTER TABLE users ADD COLUMN gold_reward_paid_at DATETIME")
+	_, _ = database.DB.ExecContext(ctx, "ALTER TABLE users ADD COLUMN diamond_reward_paid INT DEFAULT 0")
+	_, _ = database.DB.ExecContext(ctx, "ALTER TABLE users ADD COLUMN diamond_reward_paid_at DATETIME")
+
 	var count int
 	_ = database.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE LOWER(TRIM(email)) = 'admin@armss.com'").Scan(&count)
 	if count > 0 {

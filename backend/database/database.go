@@ -102,6 +102,22 @@ func createTables(driver string) error {
 			tier VARCHAR(20) NOT NULL DEFAULT 'silver',
 			is_active BOOLEAN NOT NULL DEFAULT TRUE,
 			wallet_amount DECIMAL(12, 2) NOT NULL DEFAULT 250.00,
+			age INT DEFAULT 0,
+			channel_name VARCHAR(255),
+			channel_logo TEXT,
+			channel_description TEXT,
+			account_status VARCHAR(32) NOT NULL DEFAULT 'active',
+			suspension_reason TEXT,
+			suspended_at DATETIME NULL,
+			approved_at DATETIME NULL,
+			approved_by VARCHAR(100),
+			rejection_reason TEXT,
+			silver_reward_paid INT DEFAULT 0,
+			silver_reward_paid_at DATETIME NULL,
+			gold_reward_paid INT DEFAULT 0,
+			gold_reward_paid_at DATETIME NULL,
+			diamond_reward_paid INT DEFAULT 0,
+			diamond_reward_paid_at DATETIME NULL,
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -326,31 +342,31 @@ func createTables(driver string) error {
 	_, _ = DB.Exec("ALTER TABLE videos ADD COLUMN master_path TEXT")
 	_, _ = DB.Exec("ALTER TABLE videos ADD COLUMN hls_path TEXT")
 	_, _ = DB.Exec("ALTER TABLE videos ADD COLUMN hls_url TEXT")
-	_, _ = DB.Exec("ALTER TABLE videos ADD COLUMN transcode_status TEXT DEFAULT 'ready'")
-	_, _ = DB.Exec("ALTER TABLE videos ADD COLUMN video_type TEXT DEFAULT 'landscape'")
+	_, _ = DB.Exec("ALTER TABLE videos ADD COLUMN transcode_status VARCHAR(32) DEFAULT 'ready'")
+	_, _ = DB.Exec("ALTER TABLE videos ADD COLUMN video_type VARCHAR(32) DEFAULT 'landscape'")
 	_, _ = DB.Exec("UPDATE videos SET video_type = 'landscape' WHERE video_type IS NULL OR video_type = ''")
 	_, _ = DB.Exec("UPDATE videos SET video_type = 'short' WHERE duration_minutes <= 2.0")
 
 	// Auto-migrate users table columns for Age, Creator Channel Details & Silver Milestone Reward Tracking
-	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN age INTEGER DEFAULT 0")
-	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN channel_name TEXT")
+	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN age INT DEFAULT 0")
+	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN channel_name VARCHAR(255)")
 	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN channel_logo TEXT")
 	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN channel_description TEXT")
-	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN silver_reward_paid INTEGER DEFAULT 0")
+	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN silver_reward_paid INT DEFAULT 0")
 	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN silver_reward_paid_at DATETIME")
 
 	// Multi-Tier Monetization Tracking (Gold & Diamond)
-	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN gold_reward_paid INTEGER DEFAULT 0")
+	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN gold_reward_paid INT DEFAULT 0")
 	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN gold_reward_paid_at DATETIME")
-	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN diamond_reward_paid INTEGER DEFAULT 0")
+	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN diamond_reward_paid INT DEFAULT 0")
 	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN diamond_reward_paid_at DATETIME")
 
 	// User Lifecycle, Approvals & Temporary Suspension
-	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN account_status TEXT DEFAULT 'active'")
+	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN account_status VARCHAR(32) DEFAULT 'active'")
 	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN suspension_reason TEXT")
 	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN suspended_at DATETIME")
 	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN approved_at DATETIME")
-	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN approved_by TEXT")
+	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN approved_by VARCHAR(100)")
 	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN rejection_reason TEXT")
 	_, _ = DB.Exec("UPDATE users SET account_status = 'active' WHERE account_status IS NULL OR account_status = ''")
 	_, _ = DB.Exec("UPDATE users SET mobile = NULL WHERE mobile = ''")
