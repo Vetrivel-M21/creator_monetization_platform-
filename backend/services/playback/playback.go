@@ -17,20 +17,20 @@ import (
 	"time"
 
 	"creator-monetization-backend/database"
+	"creator-monetization-backend/middleware"
 
 	"github.com/go-chi/chi/v5"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Playback Token Engine (HMAC-SHA256 Signed & Video-Bound)
+// Configuration & Playback Token Engine (HMAC-SHA256 Signed & Video-Bound)
 // ─────────────────────────────────────────────────────────────────────────────
 
-func getJWTSecret() []byte {
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		secret = "creator-platform-default-jwt-secret-key-2026"
-	}
-	return []byte(secret)
+// IsPlaybackTokenRequired determines whether unauthenticated/tokenless requests are blocked
+// Default is false (compatibility mode) to prevent breaking mobile / guest playback.
+func IsPlaybackTokenRequired() bool {
+	req := strings.ToLower(strings.TrimSpace(os.Getenv("PLAYBACK_TOKEN_REQUIRED")))
+	return req == "true" || req == "1" || req == "yes"
 }
 
 // GeneratePlaybackToken creates a lightweight, URL-safe HMAC token bound to videoID
@@ -42,7 +42,7 @@ func GeneratePlaybackToken(videoID string, duration time.Duration) (string, time
 	expUnix := expiresAt.Unix()
 
 	payload := fmt.Sprintf("%s:%d", videoID, expUnix)
-	mac := hmac.New(sha256.New, getJWTSecret())
+	mac := hmac.New(sha256.New, middleware.GetJWTSecret())
 	mac.Write([]byte(payload))
 	sig := hex.EncodeToString(mac.Sum(nil))
 
@@ -72,9 +72,9 @@ func ValidatePlaybackToken(tokenStr, videoID string) bool {
 		return false
 	}
 
-	// Verify signature
+	// Verify signature against single source of truth (middleware.GetJWTSecret)
 	payload := fmt.Sprintf("%s:%d", videoID, expUnix)
-	mac := hmac.New(sha256.New, getJWTSecret())
+	mac := hmac.New(sha256.New, middleware.GetJWTSecret())
 	mac.Write([]byte(payload))
 	expectedSig := hex.EncodeToString(mac.Sum(nil))
 
@@ -84,17 +84,17 @@ func ValidatePlaybackToken(tokenStr, videoID string) bool {
 // extractPlaybackToken retrieves the token from query param ?token= or Authorization header
 func extractPlaybackToken(r *http.Request) string {
 	if token := r.URL.Query().Get("token"); token != "" {
-		return token
+		return strings.TrimSpace(token)
 	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
-		return strings.TrimPrefix(authHeader, "Bearer ")
+		return strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
 	}
 	return ""
 }
 
-// getPublicAPIBaseURL returns the configured public API host or infers from incoming request
-func getPublicAPIBaseURL(r *http.Request) string {
+// GetPublicAPIBaseURL returns the configured public API host or infers from incoming request
+func GetPublicAPIBaseURL(r *http.Request) string {
 	baseURL := strings.TrimRight(os.Getenv("PUBLIC_API_BASE_URL"), "/")
 	if baseURL != "" {
 		return baseURL
@@ -102,14 +102,21 @@ func getPublicAPIBaseURL(r *http.Request) string {
 
 	scheme := "http"
 	if r != nil {
-		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+			scheme = proto
+		} else if r.TLS != nil {
 			scheme = "https"
 		}
-		if r.Host != "" {
-			return fmt.Sprintf("%s://%s", scheme, r.Host)
+		host := r.Header.Get("X-Forwarded-Host")
+		if host == "" {
+			host = r.Host
+		}
+		if host != "" {
+			return fmt.Sprintf("%s://%s", scheme, host)
 		}
 	}
-	return ""
+	// Production fallback
+	return "https://entertainment.aurapictures.online"
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -138,7 +145,7 @@ func GetPlaybackTicket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token, expiresAt := GeneratePlaybackToken(videoID, 4*time.Hour)
-	baseURL := getPublicAPIBaseURL(r)
+	baseURL := GetPublicAPIBaseURL(r)
 	hlsURL := fmt.Sprintf("%s/api/playback/%s/master.m3u8?token=%s", baseURL, videoID, token)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -166,93 +173,103 @@ func ServeMasterPlaylist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Validate playback token
+	// 1. Validate playback token (with compatibility fallback)
 	token := extractPlaybackToken(r)
-	if !ValidatePlaybackToken(token, videoID) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.WriteHeader(http.StatusUnauthorized)
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"error":    "invalid or expired playback token",
-			"video_id": videoID,
-		})
-		return
-	}
+	hasValidToken := ValidatePlaybackToken(token, videoID)
 
-	baseURL := getPublicAPIBaseURL(r)
-
-	// 2. Check HLS master manifest on disk
-	masterPath := filepath.Join("data", "hls", videoID, "master.m3u8")
-	data, err := os.ReadFile(masterPath)
-	if err != nil || len(bytes.TrimSpace(data)) == 0 {
-		// Check transcode status from DB for clear error feedback
-		var transcodeStatus string
-		dbErr := database.DB.QueryRowContext(r.Context(),
-			"SELECT COALESCE(transcode_status, 'ready') FROM videos WHERE id = ?", videoID,
-		).Scan(&transcodeStatus)
-
-		if dbErr == nil {
-			if transcodeStatus == "processing" || transcodeStatus == "pending" {
-				w.Header().Set("Content-Type", "application/json")
-				w.Header().Set("Access-Control-Allow-Origin", "*")
-				w.WriteHeader(http.StatusConflict) // 409 Conflict
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{
-					"error":            "video stream not ready (transcoding in progress)",
-					"status":           "processing",
-					"transcode_status": transcodeStatus,
-					"video_id":         videoID,
-				})
-				return
-			}
-			if transcodeStatus == "failed" {
-				w.Header().Set("Content-Type", "application/json")
-				w.Header().Set("Access-Control-Allow-Origin", "*")
-				w.WriteHeader(http.StatusUnprocessableEntity) // 422
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{
-					"error":            "video transcoding failed",
-					"status":           "failed",
-					"transcode_status": transcodeStatus,
-					"video_id":         videoID,
-				})
-				return
-			}
-		}
-
-		// Fallback to raw master MP4 if present
-		rawMasterPath := filepath.Join("data", "masters", videoID+".mp4")
-		if _, statErr := os.Stat(rawMasterPath); statErr == nil {
-			fallback := fmt.Sprintf(`#EXTM3U
-#EXT-X-VERSION:7
-#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080
-%s/api/playback/%s/master.mp4?token=%s
-`, baseURL, videoID, token)
-			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	if !hasValidToken {
+		if IsPlaybackTokenRequired() {
+			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Range")
-			_, _ = w.Write([]byte(fallback))
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":    "invalid or expired playback token",
+				"video_id": videoID,
+			})
 			return
 		}
+		// Compatibility mode: generate fresh token so child links in playlist are authenticated
+		token, _ = GeneratePlaybackToken(videoID, 4*time.Hour)
+	}
 
-		w.Header().Set("Content-Type", "application/json")
+	baseURL := GetPublicAPIBaseURL(r)
+
+	// 2. Transcode Gating:
+	// A) If HLS master exists on disk -> Playable!
+	masterPath := filepath.Join("data", "hls", videoID, "master.m3u8")
+	data, err := os.ReadFile(masterPath)
+	if err == nil && len(bytes.TrimSpace(data)) > 0 {
+		rewritten := rewriteMasterManifest(data, videoID, token, baseURL)
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.WriteHeader(http.StatusNotFound)
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"error":    "video stream not ready or not found",
-			"status":   "not_found",
-			"video_id": videoID,
-		})
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Range")
+		w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Range")
+		_, _ = w.Write(rewritten)
 		return
 	}
 
-	// 3. Rewrite variant stream URIs to include token and absolute API path
-	rewritten := rewriteMasterManifest(data, videoID, token, baseURL)
+	// B) If only raw master MP4 exists on disk -> Serve progressive MP4 fallback
+	rawMasterPath := filepath.Join("data", "masters", videoID+".mp4")
+	if _, statErr := os.Stat(rawMasterPath); statErr == nil {
+		tokenParam := ""
+		if token != "" {
+			tokenParam = "?token=" + token
+		}
+		fallback := fmt.Sprintf(`#EXTM3U
+#EXT-X-VERSION:7
+#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080
+%s/api/playback/%s/master.mp4%s
+`, baseURL, videoID, tokenParam)
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Range")
+		w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Range")
+		_, _ = w.Write([]byte(fallback))
+		return
+	}
 
-	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	// C) Neither HLS nor master MP4 exists on disk: query DB for transcode status
+	var transcodeStatus string
+	dbErr := database.DB.QueryRowContext(r.Context(),
+		"SELECT COALESCE(transcode_status, 'ready') FROM videos WHERE id = ?", videoID,
+	).Scan(&transcodeStatus)
+
+	if dbErr == nil {
+		if transcodeStatus == "processing" || transcodeStatus == "pending" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.WriteHeader(http.StatusConflict) // 409 Conflict
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":            "video stream not ready (transcoding in progress)",
+				"status":           "processing",
+				"transcode_status": transcodeStatus,
+				"video_id":         videoID,
+			})
+			return
+		}
+		if transcodeStatus == "failed" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.WriteHeader(http.StatusUnprocessableEntity) // 422
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":            "video transcoding failed",
+				"status":           "failed",
+				"transcode_status": transcodeStatus,
+				"video_id":         videoID,
+			})
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Range")
-	w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Range")
-	_, _ = w.Write(rewritten)
+	w.WriteHeader(http.StatusNotFound)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"error":    "video stream not ready or not found",
+		"status":   "not_found",
+		"video_id": videoID,
+	})
 }
 
 // ServeSegmentFile handles GET/HEAD /api/playback/{id}/{file}
@@ -275,17 +292,23 @@ func ServeSegmentFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Validate playback token
+	// 1. Validate playback token (with compatibility fallback)
 	token := extractPlaybackToken(r)
-	if !ValidatePlaybackToken(token, videoID) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.WriteHeader(http.StatusUnauthorized)
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"error":    "invalid or expired playback token",
-			"video_id": videoID,
-		})
-		return
+	hasValidToken := ValidatePlaybackToken(token, videoID)
+
+	if !hasValidToken {
+		if IsPlaybackTokenRequired() {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":    "invalid or expired playback token",
+				"video_id": videoID,
+			})
+			return
+		}
+		// Compatibility mode: generate fresh token
+		token, _ = GeneratePlaybackToken(videoID, 4*time.Hour)
 	}
 
 	// 2. Direct master MP4 fallback support (e.g. /api/playback/{id}/master.mp4?token=...)
@@ -313,7 +336,7 @@ func ServeSegmentFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	baseURL := getPublicAPIBaseURL(r)
+	baseURL := GetPublicAPIBaseURL(r)
 	ext := strings.ToLower(filepath.Ext(filename))
 
 	// 3. Media Playlist Rewrite (stream_X.m3u8): rewrite segments & EXT-X-MAP, ensure VOD tags
@@ -380,7 +403,11 @@ func rewriteMasterManifest(raw []byte, videoID, token, baseURL string) []byte {
 			if idx := strings.Index(variantFile, "?"); idx != -1 {
 				variantFile = variantFile[:idx]
 			}
-			buf.WriteString(fmt.Sprintf("%s/api/playback/%s/%s?token=%s\n", baseURL, videoID, variantFile, token))
+			tokenParam := ""
+			if token != "" {
+				tokenParam = "?token=" + token
+			}
+			buf.WriteString(fmt.Sprintf("%s/api/playback/%s/%s%s\n", baseURL, videoID, variantFile, tokenParam))
 			continue
 		}
 
@@ -400,6 +427,11 @@ func rewriteMediaManifest(raw []byte, videoID, token, baseURL string) []byte {
 	scanner := bufio.NewScanner(bytes.NewReader(raw))
 	hasPlaylistType := false
 	hasEndList := false
+
+	tokenParam := ""
+	if token != "" {
+		tokenParam = "?token=" + token
+	}
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -422,17 +454,14 @@ func rewriteMediaManifest(raw []byte, videoID, token, baseURL string) []byte {
 			continue
 		}
 
-		// Rewrite media segment lines (.m4s, .ts, .mp4, .aac)
+		// Rewrite all non-comment media segment lines (.m4s, .ts, .mp4, etc.)
 		if !strings.HasPrefix(line, "#") {
 			segName := filepath.Base(line)
 			if idx := strings.Index(segName, "?"); idx != -1 {
 				segName = segName[:idx]
 			}
-			ext := strings.ToLower(filepath.Ext(segName))
-			if ext == ".m4s" || ext == ".ts" || ext == ".mp4" || ext == ".aac" {
-				buf.WriteString(fmt.Sprintf("%s/api/playback/%s/%s?token=%s\n", baseURL, videoID, segName, token))
-				continue
-			}
+			buf.WriteString(fmt.Sprintf("%s/api/playback/%s/%s%s\n", baseURL, videoID, segName, tokenParam))
+			continue
 		}
 
 		buf.WriteString(line + "\n")
@@ -468,6 +497,10 @@ func rewriteExtXMapTag(line, videoID, token, baseURL string) string {
 	if idx := strings.Index(initFile, "?"); idx != -1 {
 		initFile = initFile[:idx]
 	}
-	newURI := fmt.Sprintf(`%s/api/playback/%s/%s?token=%s`, baseURL, videoID, initFile, token)
+	tokenParam := ""
+	if token != "" {
+		tokenParam = "?token=" + token
+	}
+	newURI := fmt.Sprintf(`%s/api/playback/%s/%s%s`, baseURL, videoID, initFile, tokenParam)
 	return line[:start] + fmt.Sprintf(`URI="%s"`, newURI) + line[start+5+end+1:]
 }

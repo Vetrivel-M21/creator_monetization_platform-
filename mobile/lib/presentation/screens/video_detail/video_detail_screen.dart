@@ -91,67 +91,76 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
     setState(() {
       _isPlayerInitialized = false;
       _hasPlayerError = false;
-      _isProcessingTranscode = _currentVideo.isTranscodeProcessing;
+      _isProcessingTranscode = false;
     });
 
-    // 1. If video is processing ABR ladders, do not initialize player on broken ladder
-    if (_currentVideo.isTranscodeProcessing) {
-      return;
-    }
-
     final auth = AuthService.instance;
-    String streamUrl = '';
-    String? fallbackUrl;
+    final candidateUrls = <String>[];
 
-    // 2. Prefer API playback ticket endpoint (GET /api/videos/{id}/playback)
-    try {
-      final ticket = await _api.fetchPlaybackTicket(_currentVideo.id, token: auth.token);
-      if (ticket != null) {
-        final ticketStatus = ticket['transcode_status']?.toString();
-        if (ticketStatus == 'processing' || ticketStatus == 'pending') {
-          if (mounted) {
-            setState(() {
-              _isProcessingTranscode = true;
-              _currentVideo = _currentVideo.copyWith(transcodeStatus: 'processing');
-            });
+    // 1. Try playback ticket if logged in
+    if (auth.isLoggedIn) {
+      try {
+        final ticket = await _api.fetchPlaybackTicket(_currentVideo.id, token: auth.token);
+        if (ticket != null) {
+          final ticketHls = ticket['hls_url']?.toString();
+          if (ticketHls != null && ticketHls.isNotEmpty) {
+            candidateUrls.add(ApiConstants.toAbsoluteUrl(ticketHls));
           }
-          return;
         }
-        final ticketHls = ticket['hls_url']?.toString();
-        if (ticketHls != null && ticketHls.isNotEmpty) {
-          streamUrl = ApiConstants.toAbsoluteUrl(ticketHls);
-        }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
 
-    // 3. Fallback to video.hlsUrl / video.videoUrl from list API (always absolute)
-    if (streamUrl.isEmpty) {
-      if (_currentVideo.hlsUrl.isNotEmpty && _currentVideo.isTranscodeReady) {
-        streamUrl = ApiConstants.toAbsoluteUrl(_currentVideo.hlsUrl);
-        if (_currentVideo.videoUrl.isNotEmpty) {
-          fallbackUrl = ApiConstants.toAbsoluteUrl(_currentVideo.videoUrl);
-        }
-      } else if (_currentVideo.videoUrl.isNotEmpty) {
-        streamUrl = ApiConstants.toAbsoluteUrl(_currentVideo.videoUrl);
-        if (_currentVideo.hlsUrl.isNotEmpty) {
-          fallbackUrl = ApiConstants.toAbsoluteUrl(_currentVideo.hlsUrl);
-        }
-      } else if (_currentVideo.hlsUrl.isNotEmpty) {
-        streamUrl = ApiConstants.toAbsoluteUrl(_currentVideo.hlsUrl);
+    // 2. Add HLS URL from video model
+    if (_currentVideo.hlsUrl.isNotEmpty) {
+      final absHls = ApiConstants.toAbsoluteUrl(_currentVideo.hlsUrl);
+      if (!candidateUrls.contains(absHls)) {
+        candidateUrls.add(absHls);
       }
     }
 
-    if (streamUrl.isEmpty) {
-      if (mounted) setState(() => _hasPlayerError = true);
+    // 3. Add progressive MP4 fallback from video model
+    if (_currentVideo.videoUrl.isNotEmpty) {
+      final absVideo = ApiConstants.toAbsoluteUrl(_currentVideo.videoUrl);
+      if (!candidateUrls.contains(absVideo)) {
+        candidateUrls.add(absVideo);
+      }
+    }
+
+    // 4. If no candidate URL exists at all:
+    if (candidateUrls.isEmpty) {
+      if (mounted) {
+        setState(() {
+          if (_currentVideo.isTranscodeProcessing) {
+            _isProcessingTranscode = true;
+          } else {
+            _hasPlayerError = true;
+          }
+        });
+      }
       return;
     }
 
-    _loadStream(streamUrl, fallbackUrl: fallbackUrl != streamUrl ? fallbackUrl : null);
+    // 5. Try candidates sequentially with automatic failover
+    _tryLoadCandidateUrls(candidateUrls, 0);
   }
 
-  void _loadStream(String url, {String? fallbackUrl}) {
-    final absoluteUrl = ApiConstants.toAbsoluteUrl(url);
-    final uri = Uri.parse(absoluteUrl);
+  void _tryLoadCandidateUrls(List<String> urls, int index) {
+    if (index >= urls.length) {
+      if (mounted) {
+        setState(() {
+          _isPlayerInitialized = false;
+          if (_currentVideo.isTranscodeProcessing) {
+            _isProcessingTranscode = true;
+          } else {
+            _hasPlayerError = true;
+          }
+        });
+      }
+      return;
+    }
+
+    final targetUrl = ApiConstants.toAbsoluteUrl(urls[index]);
+    final uri = Uri.parse(targetUrl);
     final controller = VideoPlayerController.networkUrl(uri);
     _playerController = controller;
 
@@ -165,13 +174,11 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
         controller.play();
       }
     }).catchError((err) {
-      if (fallbackUrl != null && fallbackUrl.isNotEmpty && fallbackUrl != url) {
-        _loadStream(fallbackUrl);
-      } else if (mounted) {
-        setState(() {
-          _hasPlayerError = true;
-          _isPlayerInitialized = false;
-        });
+      debugPrint('[VideoDetail] Candidate $index failed ($targetUrl): $err');
+      _playerController?.dispose();
+      _playerController = null;
+      if (mounted) {
+        _tryLoadCandidateUrls(urls, index + 1);
       }
     });
 

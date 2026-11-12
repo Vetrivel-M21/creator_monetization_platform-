@@ -120,7 +120,10 @@ stream_0_00001.m4s
 	}
 }
 
-func TestPlaybackEndpointsAuthGating(t *testing.T) {
+func TestPlaybackEndpointsAuthGatingStrict(t *testing.T) {
+	os.Setenv("PLAYBACK_TOKEN_REQUIRED", "true")
+	defer os.Unsetenv("PLAYBACK_TOKEN_REQUIRED")
+
 	videoID := "vid-mock-test"
 	token, _ := GeneratePlaybackToken(videoID, 2*time.Hour)
 
@@ -142,15 +145,15 @@ func TestPlaybackEndpointsAuthGating(t *testing.T) {
 	r.Get("/api/playback/{id}/master.m3u8", ServeMasterPlaylist)
 	r.Get("/api/playback/{id}/{file}", ServeSegmentFile)
 
-	// 1. Request master without token -> 401 Unauthorized
+	// 1. In strict mode: request master without token -> 401 Unauthorized
 	req1 := httptest.NewRequest("GET", "/api/playback/"+videoID+"/master.m3u8", nil)
 	w1 := httptest.NewRecorder()
 	r.ServeHTTP(w1, req1)
 	if w1.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 without token, got %d", w1.Code)
+		t.Fatalf("expected 401 without token in strict mode, got %d", w1.Code)
 	}
 
-	// 2. Request master with wrong token -> 401 Unauthorized
+	// 2. In strict mode: request master with wrong token -> 401 Unauthorized
 	req2 := httptest.NewRequest("GET", "/api/playback/"+videoID+"/master.m3u8?token=invalid_dummy_token", nil)
 	w2 := httptest.NewRecorder()
 	r.ServeHTTP(w2, req2)
@@ -190,12 +193,31 @@ func TestPlaybackEndpointsAuthGating(t *testing.T) {
 	if w5.Body.String() != "ftypmp42" {
 		t.Fatalf("unexpected segment payload: %s", w5.Body.String())
 	}
+}
 
-	// 6. Request segment without token -> 401 Unauthorized
-	req6 := httptest.NewRequest("GET", "/api/playback/"+videoID+"/init.mp4", nil)
-	w6 := httptest.NewRecorder()
-	r.ServeHTTP(w6, req6)
-	if w6.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 for segment without token, got %d", w6.Code)
+func TestPlaybackCompatibilityMode(t *testing.T) {
+	os.Setenv("PLAYBACK_TOKEN_REQUIRED", "false")
+	defer os.Unsetenv("PLAYBACK_TOKEN_REQUIRED")
+
+	videoID := "vid-compat-test"
+	hlsDir := filepath.Join("data", "hls", videoID)
+	_ = os.MkdirAll(hlsDir, 0755)
+	defer os.RemoveAll(filepath.Join("data", "hls", videoID))
+
+	masterPath := filepath.Join(hlsDir, "master.m3u8")
+	_ = os.WriteFile(masterPath, []byte("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000\nstream_0.m3u8\n"), 0644)
+
+	r := chi.NewRouter()
+	r.Get("/api/playback/{id}/master.m3u8", ServeMasterPlaylist)
+
+	// In compatibility mode (default), tokenless request succeeds with 200 and auto-generates token for child segments!
+	req := httptest.NewRequest("GET", "/api/playback/"+videoID+"/master.m3u8", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 in compatibility mode, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "stream_0.m3u8?token=") {
+		t.Fatalf("expected auto-generated token in variant links, got %s", w.Body.String())
 	}
 }

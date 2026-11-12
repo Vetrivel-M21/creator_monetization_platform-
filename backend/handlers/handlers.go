@@ -617,6 +617,7 @@ func ListVideos(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
+	baseURL := playback.GetPublicAPIBaseURL(r)
 	var videos []models.Video
 	for rows.Next() {
 		var v models.Video
@@ -628,7 +629,7 @@ func ListVideos(w http.ResponseWriter, r *http.Request) {
 		); err == nil {
 			if v.TranscodeStatus == "ready" || v.HLSURL != "" {
 				token, _ := playback.GeneratePlaybackToken(v.ID, 4*time.Hour)
-				v.HLSURL = fmt.Sprintf("/api/playback/%s/master.m3u8?token=%s", v.ID, token)
+				v.HLSURL = fmt.Sprintf("%s/api/playback/%s/master.m3u8?token=%s", baseURL, v.ID, token)
 			}
 			videos = append(videos, v)
 		}
@@ -1206,6 +1207,7 @@ func AdminListVideos(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
+	baseURL := playback.GetPublicAPIBaseURL(r)
 	var videos []models.Video
 	for rows.Next() {
 		var v models.Video
@@ -1217,7 +1219,7 @@ func AdminListVideos(w http.ResponseWriter, r *http.Request) {
 		); err == nil {
 			if v.TranscodeStatus == "ready" || v.HLSURL != "" {
 				token, _ := playback.GeneratePlaybackToken(v.ID, 4*time.Hour)
-				v.HLSURL = fmt.Sprintf("/api/playback/%s/master.m3u8?token=%s", v.ID, token)
+				v.HLSURL = fmt.Sprintf("%s/api/playback/%s/master.m3u8?token=%s", baseURL, v.ID, token)
 			}
 			videos = append(videos, v)
 		}

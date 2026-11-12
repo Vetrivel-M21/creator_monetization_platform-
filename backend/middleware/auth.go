@@ -24,7 +24,7 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-func getJWTSecret() []byte {
+func GetJWTSecret() []byte {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
 		secret = "creator-platform-default-jwt-secret-key-2026"
@@ -43,7 +43,7 @@ func GenerateToken(user *models.User) (string, error) {
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(getJWTSecret())
+	return token.SignedString(GetJWTSecret())
 }
 
 // RequestLogger logs incoming HTTP requests
@@ -93,7 +93,7 @@ func RequireAuth(next http.Handler) http.Handler {
 		if tokenString != "" {
 			claims := &Claims{}
 			token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-				return getJWTSecret(), nil
+				return GetJWTSecret(), nil
 			})
 			if err == nil && token.Valid {
 				ctx := context.WithValue(r.Context(), UserContextKey, claims)

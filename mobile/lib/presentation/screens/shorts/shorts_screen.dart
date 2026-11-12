@@ -28,6 +28,9 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
 
   // Video Controllers cache (Sliding window of max 3 controllers)
   final Map<int, VideoPlayerController> _controllers = {};
+  final Set<int> _loadingIndices = {};
+  final Set<int> _failedIndices = {};
+  final Set<int> _processingIndices = {};
 
   // Global sound state
   bool _isMuted = false;
@@ -96,6 +99,9 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
       controller.dispose();
     }
     _controllers.clear();
+    _loadingIndices.clear();
+    _failedIndices.clear();
+    _processingIndices.clear();
     super.dispose();
   }
 
@@ -116,113 +122,142 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
     }
   }
 
-  Future<String> _resolveStreamUrl(VideoModel video) async {
+  Future<List<String>> _getCandidateUrls(VideoModel video) async {
     final auth = AuthService.instance;
-    try {
-      final ticket = await _api.fetchPlaybackTicket(video.id, token: auth.token);
-      if (ticket != null) {
-        final ticketHls = ticket['hls_url']?.toString();
-        if (ticketHls != null && ticketHls.isNotEmpty) {
-          return ApiConstants.toAbsoluteUrl(ticketHls);
-        }
-      }
-    } catch (_) {}
+    final candidates = <String>[];
 
-    if (video.hlsUrl.isNotEmpty && video.isTranscodeReady) {
-      return ApiConstants.toAbsoluteUrl(video.hlsUrl);
+    // 1. If logged in, try playback ticket first
+    if (auth.isLoggedIn) {
+      try {
+        final ticket = await _api.fetchPlaybackTicket(video.id, token: auth.token);
+        if (ticket != null) {
+          final ticketHls = ticket['hls_url']?.toString();
+          if (ticketHls != null && ticketHls.isNotEmpty) {
+            candidates.add(ApiConstants.toAbsoluteUrl(ticketHls));
+          }
+        }
+      } catch (_) {}
     }
-    if (video.videoUrl.isNotEmpty) {
-      return ApiConstants.toAbsoluteUrl(video.videoUrl);
-    }
+
+    // 2. Add HLS URL from video model
     if (video.hlsUrl.isNotEmpty) {
-      return ApiConstants.toAbsoluteUrl(video.hlsUrl);
+      final absHls = ApiConstants.toAbsoluteUrl(video.hlsUrl);
+      if (!candidates.contains(absHls)) {
+        candidates.add(absHls);
+      }
     }
-    return '';
+
+    // 3. Add progressive MP4 fallback from video model
+    if (video.videoUrl.isNotEmpty) {
+      final absVideo = ApiConstants.toAbsoluteUrl(video.videoUrl);
+      if (!candidates.contains(absVideo)) {
+        candidates.add(absVideo);
+      }
+    }
+
+    return candidates;
   }
 
-  VideoPlayerController? _getOrCreateController(int index) {
-    if (index < 0 || index >= _shorts.length) return null;
-    if (_controllers.containsKey(index)) return _controllers[index];
+  Future<void> _initControllerForIndex(int index, {required bool autoPlay}) async {
+    if (index < 0 || index >= _shorts.length) return;
+    if (_controllers.containsKey(index)) {
+      final ctrl = _controllers[index];
+      if (ctrl != null && ctrl.value.isInitialized) {
+        ctrl.setVolume(_isMuted ? 0.0 : 1.0);
+        if (autoPlay) {
+          ctrl.play();
+        } else {
+          ctrl.pause();
+        }
+      }
+      return;
+    }
+
+    if (_loadingIndices.contains(index)) return;
+    _loadingIndices.add(index);
 
     final video = _shorts[index];
-    if (video.isTranscodeProcessing) {
-      return null;
-    }
+    final candidates = await _getCandidateUrls(video);
 
-    String initialUrl = '';
-    if (video.hlsUrl.isNotEmpty && video.isTranscodeReady) {
-      initialUrl = ApiConstants.toAbsoluteUrl(video.hlsUrl);
-    } else if (video.videoUrl.isNotEmpty) {
-      initialUrl = ApiConstants.toAbsoluteUrl(video.videoUrl);
-    } else if (video.hlsUrl.isNotEmpty) {
-      initialUrl = ApiConstants.toAbsoluteUrl(video.hlsUrl);
-    }
-
-    if (initialUrl.isEmpty) return null;
-
-    final controller = VideoPlayerController.networkUrl(Uri.parse(initialUrl));
-    _controllers[index] = controller;
-
-    // Async ticket check to ensure token is valid for playback routes
-    _resolveStreamUrl(video).then((ticketUrl) {
-      if (ticketUrl.isNotEmpty && ticketUrl != initialUrl && mounted) {
-        if (!_controllers.containsKey(index) || _controllers[index] != controller) return;
-        final currentPos = controller.value.position;
-        final wasPlaying = controller.value.isPlaying;
-        final newController = VideoPlayerController.networkUrl(Uri.parse(ticketUrl));
-        _controllers[index] = newController;
-        newController.initialize().then((_) {
-          if (mounted) {
-            controller.dispose();
-            newController.setLooping(true);
-            newController.setVolume(_isMuted ? 0.0 : 1.0);
-            if (currentPos > Duration.zero) {
-              newController.seekTo(currentPos);
-            }
-            if (wasPlaying && index == _currentIndex && widget.isActive) {
-              newController.play();
-            }
-            setState(() {});
+    if (candidates.isEmpty) {
+      _loadingIndices.remove(index);
+      if (mounted) {
+        setState(() {
+          if (video.isTranscodeProcessing) {
+            _processingIndices.add(index);
+          } else {
+            _failedIndices.add(index);
           }
-        }).catchError((_) {
-          // Keep old controller if ticket initialization fails
-          _controllers[index] = controller;
         });
       }
-    });
+      return;
+    }
 
-    controller.initialize().then((_) {
-      if (mounted) {
-        controller.setLooping(true);
-        controller.setVolume(_isMuted ? 0.0 : 1.0);
-        if (index == _currentIndex && widget.isActive) {
-          controller.play();
-        }
-        setState(() {});
-      }
-    }).catchError((_) {
-      // Graceful error handling for invalid stream URLs
-    });
-
-    controller.addListener(() {
-      if (mounted && index == _currentIndex && !_isScrubbing) {
-        setState(() {});
-      }
-    });
-
-    return controller;
+    _tryInitializeControllerCandidates(index, candidates, 0, autoPlay: autoPlay);
   }
 
-  void _initControllerForIndex(int index, {required bool autoPlay}) {
-    final controller = _getOrCreateController(index);
-    if (controller != null && controller.value.isInitialized) {
-      controller.setVolume(_isMuted ? 0.0 : 1.0);
-      if (autoPlay) {
-        controller.play();
-      } else {
-        controller.pause();
+  void _tryInitializeControllerCandidates(
+    int index,
+    List<String> candidates,
+    int candidateIdx, {
+    required bool autoPlay,
+  }) {
+    if (candidateIdx >= candidates.length) {
+      _loadingIndices.remove(index);
+      if (mounted) {
+        setState(() {
+          if (_shorts[index].isTranscodeProcessing) {
+            _processingIndices.add(index);
+          } else {
+            _failedIndices.add(index);
+          }
+        });
       }
+      return;
     }
+
+    final targetUrl = candidates[candidateIdx];
+    final uri = Uri.parse(targetUrl);
+    final controller = VideoPlayerController.networkUrl(uri);
+
+    controller.initialize().then((_) {
+      _loadingIndices.remove(index);
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
+
+      // Check if index was moved out of sliding window
+      if (index < _currentIndex - 1 || index > _currentIndex + 1) {
+        controller.dispose();
+        return;
+      }
+
+      _controllers[index] = controller;
+      _failedIndices.remove(index);
+      _processingIndices.remove(index);
+
+      controller.setLooping(true);
+      controller.setVolume(_isMuted ? 0.0 : 1.0);
+
+      controller.addListener(() {
+        if (mounted && index == _currentIndex && !_isScrubbing) {
+          setState(() {});
+        }
+      });
+
+      if (autoPlay && index == _currentIndex && widget.isActive) {
+        controller.play();
+        _discAnimController.repeat();
+      }
+
+      setState(() {});
+    }).catchError((err) {
+      debugPrint('[Shorts] Candidate $candidateIdx failed for index $index ($targetUrl): $err');
+      controller.dispose();
+      // Failover to next candidate (HLS -> Progressive MP4)
+      _tryInitializeControllerCandidates(index, candidates, candidateIdx + 1, autoPlay: autoPlay);
+    });
   }
 
   void _onPageChanged(int newIndex) {
@@ -261,6 +296,9 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
     for (final key in keysToRemove) {
       _controllers[key]?.dispose();
       _controllers.remove(key);
+      _loadingIndices.remove(key);
+      _failedIndices.remove(key);
+      _processingIndices.remove(key);
     }
 
     // Record public view
@@ -476,7 +514,19 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
               fit: StackFit.expand,
               children: [
                 // 1. Full-Screen Native Video Player or Fallback Thumbnail or Processing State
-                if (video.isTranscodeProcessing)
+                if (isInitialized)
+                  SizedBox.expand(
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      child: SizedBox(
+                        width: controller.value.size.width > 0 ? controller.value.size.width : 720,
+                        height: controller.value.size.height > 0 ? controller.value.size.height : 1280,
+                        child: VideoPlayer(controller),
+                      ),
+                    ),
+                  )
+                else if (_processingIndices.contains(index) ||
+                    (video.isTranscodeProcessing && !_controllers.containsKey(index) && !_loadingIndices.contains(index)))
                   Center(
                     child: Container(
                       margin: const EdgeInsets.symmetric(horizontal: 28),
@@ -507,9 +557,13 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
                           ),
                           const SizedBox(height: 12),
                           ElevatedButton.icon(
-                            onPressed: _loadShorts,
+                            onPressed: () {
+                              _failedIndices.remove(index);
+                              _processingIndices.remove(index);
+                              _initControllerForIndex(index, autoPlay: index == _currentIndex);
+                            },
                             icon: const Icon(Icons.refresh_rounded, size: 14),
-                            label: const Text('Refresh Feed', style: TextStyle(fontSize: 12)),
+                            label: const Text('Retry', style: TextStyle(fontSize: 12)),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.primary,
                               foregroundColor: Colors.white,
@@ -520,22 +574,66 @@ class _ShortsScreenState extends State<ShortsScreen> with TickerProviderStateMix
                       ),
                     ),
                   )
-                else if (isInitialized)
-                  SizedBox.expand(
-                    child: FittedBox(
-                      fit: BoxFit.cover,
-                      child: SizedBox(
-                        width: controller.value.size.width > 0 ? controller.value.size.width : 720,
-                        height: controller.value.size.height > 0 ? controller.value.size.height : 1280,
-                        child: VideoPlayer(controller),
+                else if (_failedIndices.contains(index))
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 28),
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.redAccent.withValues(alpha: 0.5)),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 36),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Unable to load short video',
+                            style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Stream format or network unavailable.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.white70, fontSize: 11),
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              _failedIndices.remove(index);
+                              _initControllerForIndex(index, autoPlay: index == _currentIndex);
+                            },
+                            icon: const Icon(Icons.refresh_rounded, size: 14),
+                            label: const Text('Retry', style: TextStyle(fontSize: 12)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   )
                 else
-                  Image.network(
-                    video.thumbnailUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, error, stackTrace) => Container(color: Colors.black87),
+                  Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.network(
+                        video.thumbnailUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, error, stackTrace) => Container(color: Colors.black87),
+                      ),
+                      const Center(
+                        child: SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2),
+                        ),
+                      ),
+                    ],
                   ),
 
                 // Buffering Indicator
