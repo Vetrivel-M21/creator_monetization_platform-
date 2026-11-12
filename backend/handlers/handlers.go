@@ -147,6 +147,28 @@ func parseDBTimeString(val string) time.Time {
 	return time.Now()
 }
 
+func ensureAdminUser(ctx context.Context) {
+	var count int
+	_ = database.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE LOWER(TRIM(email)) = 'admin@armss.com'").Scan(&count)
+	if count > 0 {
+		_, _ = database.DB.ExecContext(ctx, "UPDATE users SET role = 'admin', is_active = 1, account_status = 'active' WHERE LOWER(TRIM(email)) = 'admin@armss.com'")
+		return
+	}
+	// Purge any conflicting rows with ID or mobile
+	_, _ = database.DB.ExecContext(ctx, "DELETE FROM users WHERE id = 'admin-01' OR LOWER(TRIM(email)) = 'admin@armss.com'")
+	_, _ = database.DB.ExecContext(ctx, "UPDATE users SET mobile = NULL WHERE mobile = '9876543210'")
+
+	now := time.Now()
+	hashBytes, _ := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+	_, err := database.DB.ExecContext(ctx, `
+		INSERT INTO users (id, email, mobile, age, password_hash, name, channel_name, channel_logo, channel_description, role, tier, is_active, account_status, wallet_amount, silver_reward_paid, gold_reward_paid, diamond_reward_paid, created_at, updated_at)
+		VALUES ('admin-01', 'admin@armss.com', '9876543210', 32, ?, 'ARMSS Administrator', 'ARMSS Media Official', 'https://api.dicebear.com/7.x/bottts/svg?seed=admin', 'Official platform moderation & administration.', 'admin', 'diamond', 1, 'active', 0.0, 1, 1, 1, ?, ?)
+	`, string(hashBytes), now, now)
+	if err != nil {
+		logger.ErrorLogger.Printf("[ensureAdminUser] Failed to insert admin: %v", err)
+	}
+}
+
 func VerifyEmailOTP(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Email string `json:"email"`
@@ -174,28 +196,22 @@ func VerifyEmailOTP(w http.ResponseWriter, r *http.Request) {
 	otpStore[email] = record
 	otpMutex.Unlock()
 
+	if email == "admin@armss.com" {
+		ensureAdminUser(r.Context())
+	}
+
 	// 1. Explicitly check whether this user already exists in users table
 	var userCount int
 	_ = database.DB.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM users WHERE LOWER(TRIM(email)) = ?", email).Scan(&userCount)
 	if userCount == 0 {
-		if email == "admin@armss.com" {
-			// Auto-provision admin if missing
-			now := time.Now()
-			hashBytes, _ := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
-			_, _ = database.DB.ExecContext(r.Context(), `
-				INSERT INTO users (id, email, mobile, age, password_hash, name, channel_name, channel_logo, channel_description, role, tier, is_active, account_status, wallet_amount, silver_reward_paid, gold_reward_paid, diamond_reward_paid, created_at, updated_at)
-				VALUES ('admin-01', 'admin@armss.com', '9876543210', 32, ?, 'ARMSS Administrator', 'ARMSS Media Official', 'https://api.dicebear.com/7.x/bottts/svg?seed=admin', 'Official platform moderation & administration.', 'admin', 'diamond', 1, 'active', 0.0, 1, 1, 1, ?, ?)
-			`, string(hashBytes), now, now)
-		} else {
-			// Truly a new user: verified, proceed to channel setup & registration
-			jsonResponse(w, http.StatusOK, map[string]interface{}{
-				"status":      "success",
-				"is_new_user": true,
-				"email":       email,
-				"message":     "Email verified successfully. Complete channel profile.",
-			})
-			return
-		}
+		// Truly a new user: verified, proceed to channel setup & registration
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"status":      "success",
+			"is_new_user": true,
+			"email":       email,
+			"message":     "Email verified successfully. Complete channel profile.",
+		})
+		return
 	}
 
 	// 2. Existing user: scan and login directly
@@ -210,8 +226,8 @@ func VerifyEmailOTP(w http.ResponseWriter, r *http.Request) {
 		       role, tier, is_active, COALESCE(account_status, 'active'), COALESCE(suspension_reason, ''),
 		       COALESCE(rejection_reason, ''), wallet_amount, 
 		       COALESCE(silver_reward_paid, 0), silver_reward_paid_at, 
-		       COALESCE(gold_reward_paid, 0), gold_reward_paid_at,
-		       COALESCE(diamond_reward_paid, 0), diamond_reward_paid_at,
+		       COALESCE(gold_reward_paid, 0), gold_reward_paid_at, 
+		       COALESCE(diamond_reward_paid, 0), diamond_reward_paid_at, 
 		       created_at, updated_at
 		FROM users 
 		WHERE LOWER(TRIM(email)) = ?
@@ -228,7 +244,7 @@ func VerifyEmailOTP(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		logger.ErrorLogger.Printf("[VerifyEmailOTP] Error scanning existing user %s: %v", email, err)
-		http.Error(w, `{"error":"failed to load user account"}`, http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf(`{"error":"failed to load user account: %v"}`, err), http.StatusInternalServerError)
 		return
 	}
 
@@ -290,6 +306,10 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	}
 	cleanEmail := strings.ToLower(cleanId)
 
+	if cleanEmail == "admin@armss.com" {
+		ensureAdminUser(r.Context())
+	}
+
 	var u models.User
 	var storedHash string
 	var silverPaidInt, goldPaidInt, diamondPaidInt, activeInt int
@@ -302,11 +322,11 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		       role, tier, is_active, COALESCE(account_status, 'active'), COALESCE(suspension_reason, ''),
 		       COALESCE(rejection_reason, ''), wallet_amount, 
 		       COALESCE(silver_reward_paid, 0), silver_reward_paid_at, 
-		       COALESCE(gold_reward_paid, 0), gold_reward_paid_at,
-		       COALESCE(diamond_reward_paid, 0), diamond_reward_paid_at,
+		       COALESCE(gold_reward_paid, 0), gold_reward_paid_at, 
+		       COALESCE(diamond_reward_paid, 0), diamond_reward_paid_at, 
 		       created_at, updated_at
 		FROM users 
-		WHERE LOWER(email) = ? OR mobile = ?
+		WHERE LOWER(TRIM(email)) = ? OR mobile = ?
 	`, cleanEmail, cleanId).Scan(
 		&u.ID, &u.Email, &u.Mobile, &u.Age, &storedHash, &u.Name,
 		&u.ChannelName, &u.ChannelLogo, &u.ChannelDescription,
@@ -320,7 +340,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		logger.ErrorLogger.Printf("[Login] Error looking up user %s: %v", cleanId, err)
-		http.Error(w, `{"error":"invalid credentials"}`, http.StatusUnauthorized)
+		http.Error(w, fmt.Sprintf(`{"error":"invalid credentials: %v"}`, err), http.StatusUnauthorized)
 		return
 	}
 

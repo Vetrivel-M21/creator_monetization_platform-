@@ -425,16 +425,24 @@ func seedInitialData(driver string) {
 
 	// Ensure the initial production root administrator account (admin@armss.com / admin123) exists
 	var adminCount int
-	_ = DB.QueryRow("SELECT COUNT(*) FROM users WHERE email = 'admin@armss.com'").Scan(&adminCount)
+	_ = DB.QueryRow("SELECT COUNT(*) FROM users WHERE LOWER(TRIM(email)) = 'admin@armss.com'").Scan(&adminCount)
 	if adminCount == 0 {
-		_, _ = DB.Exec(`
+		// Clean up any stale row with conflicting ID or mobile
+		_, _ = DB.Exec("DELETE FROM users WHERE id = 'admin-01' OR LOWER(TRIM(email)) = 'admin@armss.com'")
+		_, _ = DB.Exec("UPDATE users SET mobile = NULL WHERE mobile = '9876543210'")
+
+		_, err := DB.Exec(`
 			INSERT INTO users (id, email, mobile, age, password_hash, name, channel_name, channel_logo, channel_description, role, tier, is_active, account_status, wallet_amount, silver_reward_paid, gold_reward_paid, diamond_reward_paid, created_at, updated_at)
 			VALUES ('admin-01', 'admin@armss.com', '9876543210', 32, ?, 'ARMSS Administrator', 'ARMSS Media Official', 'https://api.dicebear.com/7.x/bottts/svg?seed=admin', 'Official platform moderation & administration.', 'admin', 'diamond', 1, 'active', 0.0, 1, 1, 1, ?, ?)
 		`, adminHash, now, now)
-		log.Println("[Database] ✓ Production admin account created: admin@armss.com")
+		if err != nil {
+			log.Printf("[Database] FAILED to seed admin account: %v", err)
+		} else {
+			log.Println("[Database] ✓ Production admin account created: admin@armss.com")
+		}
 	} else {
 		// Ensure admin status is active, role is admin, and password matches admin123
-		_, _ = DB.Exec("UPDATE users SET password_hash = ?, role = 'admin', is_active = 1, account_status = 'active' WHERE email = 'admin@armss.com'", adminHash)
+		_, _ = DB.Exec("UPDATE users SET password_hash = ?, role = 'admin', is_active = 1, account_status = 'active' WHERE LOWER(TRIM(email)) = 'admin@armss.com'", adminHash)
 	}
 
 	// Purge all default sample/testing dummy records for clean production start
