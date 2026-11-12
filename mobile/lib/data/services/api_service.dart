@@ -641,8 +641,8 @@ class ApiService {
   Future<UserModel?> updateProfile({
     required String token,
     required String name,
-    required int age,
-    required String mobile,
+    int age = 25,
+    String mobile = '',
     required String channelName,
     required String channelDescription,
   }) async {

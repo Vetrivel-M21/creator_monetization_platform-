@@ -659,20 +659,16 @@ class _StudioScreenState extends State<StudioScreen> {
                         ? null
                         : () async {
                             setModalState(() => isSaving = true);
-                            final ok = await _apiService.updateProfile(
+                            final updatedUser = await _apiService.updateProfile(
                               token: auth.token!,
                               name: nameCtrl.text.trim(),
+                              age: auth.currentUser?.age ?? 25,
+                              mobile: auth.currentUser?.mobile ?? '',
                               channelName: channelCtrl.text.trim(),
                               channelDescription: bioCtrl.text.trim(),
                             );
-                            if (ok && context.mounted) {
-                              if (auth.currentUser != null) {
-                                auth.updateCurrentUser(auth.currentUser!.copyWith(
-                                  name: nameCtrl.text.trim(),
-                                  channelName: channelCtrl.text.trim(),
-                                  channelDescription: bioCtrl.text.trim(),
-                                ));
-                              }
+                            if (updatedUser != null && context.mounted) {
+                              auth.updateCurrentUser(updatedUser);
                               Navigator.pop(ctx);
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(content: Text('Channel profile updated successfully!')),
