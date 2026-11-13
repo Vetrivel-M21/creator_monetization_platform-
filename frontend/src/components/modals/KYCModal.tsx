@@ -162,7 +162,7 @@ export const KYCModal: React.FC<KYCModalProps> = ({ isOpen, onClose, onSuccess, 
                   className="mt-0.5 rounded border-[#CBD5E1] accent-[#2563EB] text-[#2563EB] focus:ring-0"
                 />
                 <span className="leading-relaxed">
-                  I certify that all uploaded content is 100% human-authored and compliant with ARMSS Entertainment{' '}
+                  I certify that all uploaded content is 100% human-authored and compliant with Aura Entertainment{' '}
                   <button
                     type="button"
                     onClick={(e) => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, Film, Bookmark, Video, Shield, Upload, LogIn, LogOut, Flame, Tv, ArrowRight, Headphones } from 'lucide-react';
+import { Compass, Film, Bookmark, Video, Shield, Upload, LogIn, LogOut, Tv, ArrowRight, Headphones } from 'lucide-react';
 import type { User, MainNavTab } from '../../types';
 
 interface SidebarProps {
@@ -36,13 +36,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <aside className="ott-sidebar hidden md:flex">
       <div className="space-y-5 flex-1 overflow-y-auto scrollbar-none pr-0.5">
         {/* Brand Logo Header */}
-        <div className="sidebar-brand-block">
-          <div className="sidebar-brand-icon">
-            <Flame size={20} className="fill-white" />
-          </div>
+        <div className="sidebar-brand-block flex items-center gap-3">
+          <img
+            src="/assets/aura_mobile_app_icon_dark_squircle.png"
+            alt="Aura Entertainment Logo"
+            className="w-9 h-9 rounded-xl object-contain shadow-sm shrink-0"
+          />
           <div className="min-w-0">
-            <div className="sidebar-brand-title">
-              <span>ARMSS</span>
+            <div className="sidebar-brand-title flex items-center gap-1.5">
+              <span>AURA</span>
               <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-[#E0EDFF] text-[#1D4ED8] border border-[#BFDBFE] uppercase tracking-wider font-mono">
                 ENTERTAINMENT
               </span>

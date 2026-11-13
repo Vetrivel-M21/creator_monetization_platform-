@@ -12,7 +12,6 @@ import {
   ChevronLeft,
   Eye,
   EyeOff,
-  Flame,
   AlertCircle,
 } from 'lucide-react';
 import { authService } from '../../services/authService';
@@ -119,7 +118,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setLoading(true);
       setErrorMessage(null);
       const res = await authService.sendOTP(cleanEmail);
-      if (cleanEmail === 'admin@armss.com' && res.demo_otp) {
+      if ((cleanEmail === 'admin@armss.com' || cleanEmail === 'admin@aura.com') && res.demo_otp) {
         setDemoOTP(res.demo_otp);
       } else {
         setDemoOTP(null);
@@ -166,7 +165,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     try {
       setLoading(true);
       const res = await authService.sendOTP(cleanEmail);
-      if (cleanEmail === 'admin@armss.com' && res.demo_otp) {
+      if ((cleanEmail === 'admin@armss.com' || cleanEmail === 'admin@aura.com') && res.demo_otp) {
         setDemoOTP(res.demo_otp);
       } else {
         setDemoOTP(null);
@@ -276,15 +275,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onAuthSuccess(res.token, res.user);
         handleClose();
       } else if (res.is_new_user) {
-        if (cleanEmail === 'admin@armss.com') {
+        if (cleanEmail === 'admin@armss.com' || cleanEmail === 'admin@aura.com') {
           setView('password_login');
-          setLoginIdentifier('admin@armss.com');
+          setLoginIdentifier(cleanEmail);
           setErrorMessage('Please sign in with administrator credentials.');
           return;
         }
         // Automatically create account with email prefix
         const autoName = email.split('@')[0] || 'Creator';
-        const regRes = await authService.registerWithOTP(autoName, email, `ARMSS_${Date.now()}`);
+        const regRes = await authService.registerWithOTP(autoName, email, `AURA_${Date.now()}`);
         onAuthSuccess(regRes.token, regRes.user);
         handleClose();
       }
@@ -353,11 +352,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </button>
           ) : (
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-[#2563EB] flex items-center justify-center text-white shadow-sm">
-                <Flame size={14} className="fill-white" />
-              </div>
+              <img
+                src="/assets/aura_mobile_app_icon_dark_squircle.png"
+                alt="Aura"
+                className="w-6 h-6 rounded-lg object-contain shadow-sm"
+              />
               <span className="text-xs font-bold tracking-tight text-[#0F172A] uppercase font-mono">
-                ARMSS ENTERTAINMENT
+                AURA ENTERTAINMENT
               </span>
             </div>
           )}
@@ -388,7 +389,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <div className="space-y-6">
               <div className="space-y-1.5 text-center">
                 <h2 className="text-2xl font-extrabold tracking-tight text-[#0F172A]">
-                  Welcome to ARMSS
+                  Welcome to Aura Entertainment
                 </h2>
                 <p className="text-xs text-[#64748B] leading-relaxed max-w-xs mx-auto">
                   Sign in to explore exclusive channels or publish verified videos as a creator partner.
@@ -531,8 +532,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </p>
               </div>
 
-              {/* Admin Quick Access OTP Helper (Only visible for admin@armss.com) */}
-              {email.trim().toLowerCase() === 'admin@armss.com' && demoOTP && (
+              {/* Admin Quick Access OTP Helper (Only visible for admin accounts) */}
+              {(email.trim().toLowerCase() === 'admin@armss.com' || email.trim().toLowerCase() === 'admin@aura.com') && demoOTP && (
                 <div
                   onClick={() => {
                     const digits = demoOTP.split('').slice(0, 6);
@@ -781,8 +782,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </p>
               </div>
 
-              {/* Admin Quick Access OTP Helper (Only visible for admin@armss.com) */}
-              {email.trim().toLowerCase() === 'admin@armss.com' && demoOTP && (
+              {/* Admin Quick Access OTP Helper (Only visible for admin accounts) */}
+              {(email.trim().toLowerCase() === 'admin@armss.com' || email.trim().toLowerCase() === 'admin@aura.com') && demoOTP && (
                 <div
                   onClick={() => {
                     const digits = demoOTP.split('').slice(0, 6);

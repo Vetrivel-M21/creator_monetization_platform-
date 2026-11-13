@@ -10,9 +10,9 @@ class LibraryService extends ChangeNotifier {
 
   LibraryService._internal();
 
-  static const String _prefSavedKey = 'armss_saved_videos';
-  static const String _prefLikedKey = 'armss_liked_videos';
-  static const String _prefHistoryKey = 'armss_watch_history';
+  static const String _prefSavedKey = 'aura_saved_videos';
+  static const String _prefLikedKey = 'aura_liked_videos';
+  static const String _prefHistoryKey = 'aura_watch_history';
 
   final List<VideoModel> _saved = [];
   final List<VideoModel> _liked = [];
@@ -37,7 +37,8 @@ class LibraryService extends ChangeNotifier {
 
   void _loadList(SharedPreferences prefs, String key, List<VideoModel> target) {
     target.clear();
-    final raw = prefs.getString(key);
+    final legacyKey = key.replaceFirst('aura_', 'armss_');
+    final raw = prefs.getString(key) ?? prefs.getString(legacyKey);
     if (raw != null && raw.isNotEmpty) {
       try {
         final List decoded = jsonDecode(raw);

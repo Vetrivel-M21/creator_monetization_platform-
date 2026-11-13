@@ -288,18 +288,18 @@ class _AuthSheetState extends State<AuthSheet> with SingleTickerProviderStateMix
                 children: [
                   Row(
                     children: [
-                      Container(
-                        width: 30,
-                        height: 30,
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.asset(
+                          'assets/images/aura_mobile_app_icon_dark_squircle.png',
+                          width: 30,
+                          height: 30,
+                          fit: BoxFit.cover,
                         ),
-                        child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
                       ),
                       const SizedBox(width: 10),
                       const Text(
-                        'ARMSS Creator Account',
+                        'Aura Entertainment',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,

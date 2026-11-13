@@ -585,6 +585,32 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
                     '${_currentVideo.viewsCount > 1000 ? "${(_currentVideo.viewsCount / 1000).toStringAsFixed(1)}K" : _currentVideo.viewsCount} views • ${_currentVideo.timeAgo} • ${_currentVideo.displayCategory} • ${_currentVideo.durationFormatted}',
                     style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                   ),
+                  if (_currentVideo.status.toLowerCase() != 'approved') ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.schedule, size: 12, color: Colors.amber.shade800),
+                          const SizedBox(width: 4),
+                          Text(
+                            'In Review • Creator Preview Mode',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.amber.shade800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
 
                   const SizedBox(height: 14),
 

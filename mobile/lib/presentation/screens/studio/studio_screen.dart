@@ -7,6 +7,7 @@ import 'package:creator_monetization_app/data/services/auth_service.dart';
 import '../support/support_screen.dart';
 import '../legal/legal_screen.dart';
 import '../upload/upload_video_screen.dart';
+import '../video_detail/video_detail_screen.dart';
 import '../../widgets/auth_sheet.dart';
 import '../../widgets/auth_required_dialog.dart';
 
@@ -907,82 +908,127 @@ class _StudioScreenState extends State<StudioScreen> {
 
               return Column(
                 children: videos.map((v) {
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppColors.canvasBackground,
+                  final isApproved = v.status.toLowerCase() == 'approved';
+                  final isRejected = v.status.toLowerCase() == 'rejected';
+                  final statusBg = isApproved
+                      ? AppColors.successGreen.withValues(alpha: 0.12)
+                      : isRejected
+                          ? Colors.red.withValues(alpha: 0.12)
+                          : Colors.amber.withValues(alpha: 0.15);
+                  final statusColor = isApproved
+                      ? AppColors.successGreen
+                      : isRejected
+                          ? Colors.red
+                          : Colors.amber.shade800;
+                  final statusText = isApproved
+                      ? 'APPROVED'
+                      : isRejected
+                          ? 'REJECTED'
+                          : 'IN REVIEW';
+
+                  return Material(
+                    color: Colors.transparent,
+                    child: InkWell(
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.surfaceBorder),
-                    ),
-                    child: Row(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.network(
-                            v.thumbnailUrl,
-                            width: 70,
-                            height: 44,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, error, stackTrace) => Container(
-                              width: 70,
-                              height: 44,
-                              color: Colors.black26,
-                              child: const Icon(Icons.play_circle_outline, size: 20),
-                            ),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => VideoDetailScreen(video: v),
                           ),
+                        );
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.canvasBackground,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.surfaceBorder),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                v.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                              ),
-                              const SizedBox(height: 3),
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                    decoration: BoxDecoration(
-                                      color: v.videoType == 'short' ? Colors.purple.withValues(alpha: 0.1) : AppColors.primaryAccent.withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      v.videoType == 'short' ? '9:16 Short' : '16:9 Landscape',
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w700,
-                                        color: v.videoType == 'short' ? Colors.purple : AppColors.primaryAccent,
-                                      ),
+                        child: Row(
+                          children: [
+                            Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.network(
+                                    v.thumbnailUrl,
+                                    width: 70,
+                                    height: 44,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, error, stackTrace) => Container(
+                                      width: 70,
+                                      height: 44,
+                                      color: Colors.black26,
+                                      child: const Icon(Icons.play_circle_outline, size: 20),
                                     ),
                                   ),
-                                  const SizedBox(width: 6),
+                                ),
+                                Container(
+                                  width: 22,
+                                  height: 22,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.5),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.play_arrow, size: 14, color: Colors.white),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
                                   Text(
-                                    '${v.viewsCount} views • ₹${v.totalEarned.toStringAsFixed(2)}',
-                                    style: const TextStyle(fontSize: 11, color: AppColors.mutedText),
+                                    v.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: v.videoType == 'short' ? Colors.purple.withValues(alpha: 0.1) : AppColors.primaryAccent.withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          v.videoType == 'short' ? '9:16 Short' : '16:9 Landscape',
+                                          style: TextStyle(
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w700,
+                                            color: v.videoType == 'short' ? Colors.purple : AppColors.primaryAccent,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        '${v.viewsCount} views • ₹${v.totalEarned.toStringAsFixed(2)}',
+                                        style: const TextStyle(fontSize: 11, color: AppColors.mutedText),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
-                            ],
-                          ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: statusBg,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                statusText,
+                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: statusColor),
+                              ),
+                            ),
+                          ],
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: AppColors.successGreen.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            v.status.toUpperCase(),
-                            style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.successGreen),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   );
                 }).toList(),

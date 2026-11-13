@@ -213,7 +213,7 @@ class CreatorStudioModel {
       channelDescription: 'Tech reviews, software engineering and developer productivity tips.',
       creatorName: 'Vetri Mahendran',
       age: 24,
-      email: 'creator1@armss.com',
+      email: 'creator1@aura.com',
       mobile: '+91 98765 43210',
       walletBalance: 2750.00,
       welcomeCredit: 250.00,

@@ -91,7 +91,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 ? 'Save your favorite technical talks, coding tutorials, and original creator episodes to build your curated library.'
                 : activeTab === 'liked'
                 ? 'Like videos you enjoy while browsing the feed or watching in theater mode to keep them in this collection.'
-                : 'Videos you watch on ARMSS Entertainment will automatically be recorded here for seamless continuation.'}
+                : 'Videos you watch on Aura Entertainment will automatically be recorded here for seamless continuation.'}
             </p>
           </div>
 

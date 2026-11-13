@@ -41,7 +41,7 @@ export const TheaterModal: React.FC<TheaterModalProps> = ({
 
   if (!isOpen || !video) return null;
 
-  const creatorName = video.creatorName || video.creator_name || 'ARMSS Creator';
+  const creatorName = video.creatorName || video.creator_name || 'Aura Creator';
   const creatorHandle = video.creatorHandle || video.creator_name?.toLowerCase().replace(/\s+/g, '_') || 'creator';
   const creatorAvatar = video.creatorAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${creatorHandle}`;
   const thumbnailUrl = toAbsoluteUrl(video.thumbnailUrl || video.thumbnail_url);
@@ -58,6 +58,7 @@ export const TheaterModal: React.FC<TheaterModalProps> = ({
   const mp4Url = toAbsoluteUrl(rawMp4);
   const transcodeStatus = video.transcode_status || video.transcodeStatus || 'ready';
   const isProcessing = transcodeStatus === 'processing' || transcodeStatus === 'pending';
+  const isPendingReview = video.status === 'pending_review' || video.status === 'in_review';
 
   // For newly uploaded videos still in 'processing' status, the raw master MP4
   // is immediately available on disk, so admin can preview it right away without waiting!
@@ -83,6 +84,11 @@ export const TheaterModal: React.FC<TheaterModalProps> = ({
             {isProcessing && (
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 flex items-center gap-1">
                 <Loader2 size={10} className="animate-spin" /> Transcoding
+              </span>
+            )}
+            {isPendingReview && (
+              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 flex items-center gap-1 font-mono">
+                <Clock size={11} /> In Review (Creator Preview)
               </span>
             )}
           </div>

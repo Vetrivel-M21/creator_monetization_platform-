@@ -34,12 +34,12 @@ import './App.css';
 export function App() {
   // Navigation & View States
   const [activeTab, setActiveTabState] = useState<MainNavTab>(() => {
-    const saved = sessionStorage.getItem('armss_active_tab') as MainNavTab | null;
+    const saved = sessionStorage.getItem('aura_active_tab') as MainNavTab | null;
     return saved || 'discover';
   });
 
   const setActiveTab = (tab: MainNavTab) => {
-    sessionStorage.setItem('armss_active_tab', tab);
+    sessionStorage.setItem('aura_active_tab', tab);
     setActiveTabState(tab);
   };
 
@@ -148,7 +148,7 @@ export function App() {
 
   const handleLogout = () => {
     authService.logout();
-    sessionStorage.removeItem('armss_active_tab');
+    sessionStorage.removeItem('aura_active_tab');
     setUser(null);
     setWallet(null);
     setQuota(null);
@@ -192,7 +192,7 @@ export function App() {
       try {
         await navigator.share({
           title: vid.title,
-          text: `Watch ${vid.title} on ARMSS Entertainment`,
+          text: `Watch ${vid.title} on Aura Entertainment`,
           url: window.location.href,
         });
       } catch {
@@ -375,7 +375,7 @@ export function App() {
                   id: 'usr-guest',
                   name: 'Creator Partner',
                   handle: 'creator',
-                  email: 'creator@armss.com',
+                  email: 'creator@aura.com',
                   role: 'creator',
                   tier: 'Silver',
                   balance: 250,
@@ -390,6 +390,7 @@ export function App() {
               onOpenUpload={() => setIsUploadOpen(true)}
               onOpenKYC={() => setIsKYCOpen(true)}
               onOpenWithdraw={() => setIsWithdrawOpen(true)}
+              onSelectVideo={(video) => setTheaterVideo(video)}
               onUserUpdate={(updated) => setUser(updated)}
             />
           )}

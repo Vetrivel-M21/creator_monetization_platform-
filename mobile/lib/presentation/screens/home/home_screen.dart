@@ -179,20 +179,20 @@ class _HomeScreenState extends State<HomeScreen> {
               backgroundColor: AppColors.surface,
               title: Row(
                 children: [
-                  Container(
-                    width: 30,
-                    height: 30,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.asset(
+                      'assets/images/aura_mobile_app_icon_dark_squircle.png',
+                      width: 30,
+                      height: 30,
+                      fit: BoxFit.cover,
                     ),
-                    child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
                   ),
                   const SizedBox(width: 8),
                   const Text(
-                    'ARMSS',
+                    'AURA',
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: 17,
                       fontWeight: FontWeight.w800,
                       color: AppColors.textPrimary,
                       letterSpacing: -0.5,
@@ -206,9 +206,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: const Text(
-                      'STUDIO',
+                      'ENTERTAINMENT',
                       style: TextStyle(
-                        fontSize: 9.5,
+                        fontSize: 9.0,
                         fontWeight: FontWeight.w700,
                         color: AppColors.secondaryBadgeText,
                         letterSpacing: 0.5,

@@ -107,7 +107,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({ videos, onSelectVideo,
               </h1>
 
               <p className="text-xs sm:text-sm text-slate-400 line-clamp-2 leading-relaxed font-normal">
-                {featuredVideo.description || 'Exclusive premiere on ARMSS Entertainment. Pure high-definition streaming.'}
+                {featuredVideo.description || 'Exclusive premiere on Aura Entertainment. Pure high-definition streaming.'}
               </p>
 
               <div className="pt-2">

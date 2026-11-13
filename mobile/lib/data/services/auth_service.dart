@@ -12,8 +12,8 @@ class AuthService extends ChangeNotifier {
 
   AuthService._internal();
 
-  static const String _prefTokenKey = 'armss_auth_token';
-  static const String _prefUserKey = 'armss_auth_user';
+  static const String _prefTokenKey = 'aura_auth_token';
+  static const String _prefUserKey = 'aura_auth_user';
 
   final ApiService _apiService = ApiService();
   final GoogleSignIn _googleSignIn = GoogleSignIn(
@@ -52,8 +52,8 @@ class AuthService extends ChangeNotifier {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      _token = prefs.getString(_prefTokenKey);
-      final userJson = prefs.getString(_prefUserKey);
+      _token = prefs.getString(_prefTokenKey) ?? prefs.getString('armss_auth_token');
+      final userJson = prefs.getString(_prefUserKey) ?? prefs.getString('armss_auth_user');
       if (userJson != null && userJson.isNotEmpty) {
         _currentUser = UserModel.fromJson(jsonDecode(userJson), token: _token);
       }

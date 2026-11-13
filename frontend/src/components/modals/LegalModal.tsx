@@ -30,7 +30,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                 {activeTab === 'terms' ? 'Terms & Conditions' : 'Privacy Policy'}
               </h2>
               <p className="text-xs text-[#64748B]">
-                ARMSS Entertainment Creator Monetization Platform • Last updated November 2026
+                Aura Entertainment Creator Monetization Platform • Last updated November 2026
               </p>
             </div>
           </div>
@@ -78,14 +78,14 @@ export const LegalModal: React.FC<LegalModalProps> = ({
               <div className="p-4 rounded-2xl bg-[#EFF6FF] border border-[#BFDBFE] flex items-start gap-3">
                 <AlertCircle size={18} className="text-[#2563EB] shrink-0 mt-0.5" />
                 <p className="text-[#1E40AF]">
-                  Welcome to ARMSS Entertainment. By registering an account, watching videos, or uploading content as a Creator, you legally agree to these terms, our Monetization Rules, and Anti-AI Policies.
+                  Welcome to Aura Entertainment. By registering an account, watching videos, or uploading content as a Creator, you legally agree to these terms, our Monetization Rules, and Anti-AI Policies.
                 </p>
               </div>
 
               <section className="space-y-2">
                 <h3 className="text-sm font-bold text-[#0F172A]">1. Eligibility & Human-Authored Content Policy</h3>
                 <p>
-                  ARMSS is dedicated exclusively to human creators. All uploaded videos, whether landscape (16:9) or vertical shorts (9:16), must be 100% human-recorded, edited, and authored.
+                  Aura is dedicated exclusively to human creators. All uploaded videos, whether landscape (16:9) or vertical shorts (9:16), must be 100% human-recorded, edited, and authored.
                 </p>
                 <ul className="list-disc pl-5 space-y-1 text-[#475569]">
                   <li>Synthetic AI-generated video, automated voice cloning, and mass scrapers are strictly prohibited.</li>
@@ -119,7 +119,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
               <section className="space-y-2">
                 <h3 className="text-sm font-bold text-[#0F172A]">4. Copyright & Intellectual Property</h3>
                 <p>
-                  You retain ownership of the original content you produce. By uploading to ARMSS, you grant the platform a non-exclusive, worldwide license to stream, transcode into adaptive CMAF HLS bitrate tracks, and display your video to audience members.
+                  You retain ownership of the original content you produce. By uploading to Aura, you grant the platform a non-exclusive, worldwide license to stream, transcode into adaptive CMAF HLS bitrate tracks, and display your video to audience members.
                 </p>
               </section>
 
@@ -135,7 +135,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
               <div className="p-4 rounded-2xl bg-[#ECFDF5] border border-[#A7F3D0] flex items-start gap-3">
                 <CheckCircle2 size={18} className="text-[#059669] shrink-0 mt-0.5" />
                 <p className="text-[#065F46]">
-                  Your privacy is paramount. ARMSS Entertainment protects your personal data, KYC documents, and earnings records using enterprise-grade encryption.
+                  Your privacy is paramount. Aura Entertainment protects your personal data, KYC documents, and earnings records using enterprise-grade encryption.
                 </p>
               </div>
 
@@ -177,7 +177,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
               <section className="space-y-2">
                 <h3 className="text-sm font-bold text-[#0F172A]">5. Your Rights & Data Deletion</h3>
                 <p>
-                  You have the right to inspect, update, or request the deletion of your account and associated personal data by contacting our Support Desk or emailing support@armss.com.
+                  You have the right to inspect, update, or request the deletion of your account and associated personal data by contacting our Support Desk or emailing support@aura.com.
                 </p>
               </section>
             </div>
@@ -187,7 +187,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
         {/* Footer */}
         <div className="px-6 py-4 border-t border-[#DCE7F6] bg-[#F8FAFC] flex items-center justify-between">
           <span className="text-[11px] text-[#64748B]">
-            Questions? Contact <a href="mailto:legal@armss.com" className="text-[#2563EB] underline">legal@armss.com</a>
+            Questions? Contact <a href="mailto:legal@aura.com" className="text-[#2563EB] underline">legal@aura.com</a>
           </span>
           <button
             onClick={onClose}

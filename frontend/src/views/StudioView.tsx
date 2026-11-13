@@ -17,6 +17,7 @@ import {
   Calendar,
   X,
   Camera,
+  Play,
 } from 'lucide-react';
 import type { User as UserType, Video, WalletBalance, QuotaProgress, WalletTx } from '../types';
 import { authService } from '../services/authService';
@@ -32,6 +33,7 @@ interface StudioViewProps {
   onOpenUpload: () => void;
   onOpenKYC: () => void;
   onOpenWithdraw: () => void;
+  onSelectVideo?: (video: Video) => void;
   onUserUpdate?: (updatedUser: UserType) => void;
 }
 
@@ -45,6 +47,7 @@ export const StudioView: React.FC<StudioViewProps> = ({
   onOpenUpload,
   onOpenKYC,
   onOpenWithdraw,
+  onSelectVideo,
   onUserUpdate,
 }) => {
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'content' | 'monetization'>(
@@ -194,7 +197,7 @@ export const StudioView: React.FC<StudioViewProps> = ({
             </div>
 
             <p className="text-xs sm:text-sm text-[#64748B] font-normal max-w-2xl leading-relaxed">
-              {user.channel_description || 'ARMSS Entertainment Verified Channel • Direct Bank Settlement Enabled'}
+              {user.channel_description || 'Aura Entertainment Verified Channel • Direct Bank Settlement Enabled'}
             </p>
 
             <div className="flex items-center gap-4 text-xs text-[#64748B] flex-wrap pt-0.5">
@@ -324,7 +327,7 @@ export const StudioView: React.FC<StudioViewProps> = ({
                   : 'Silver Tier Milestone Reward: ₹2,500.00'}
               </h3>
               <p className="text-xs sm:text-sm text-[#64748B] leading-relaxed font-normal">
-                ARMSS Entertainment rewards creators strictly upon completing required approved videos in each duration bucket ({tierTargetPerBucket} per bucket) and verifying Bank KYC. Individual video uploads do not credit per-video fees.
+                Aura Entertainment rewards creators strictly upon completing required approved videos in each duration bucket ({tierTargetPerBucket} per bucket) and verifying Bank KYC. Individual video uploads do not credit per-video fees.
               </p>
             </div>
             <button
@@ -434,6 +437,7 @@ export const StudioView: React.FC<StudioViewProps> = ({
                     <th className="py-3.5 px-6 font-semibold">Moderation Status</th>
                     <th className="py-3.5 px-6 font-semibold">Views</th>
                     <th className="py-3.5 px-6 font-semibold">Quota Progression</th>
+                    <th className="py-3.5 px-6 font-semibold text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#DCE7F6]">
@@ -441,16 +445,27 @@ export const StudioView: React.FC<StudioViewProps> = ({
                     const isApproved = video.status === 'approved' || !video.status;
                     const isRejected = video.status === 'rejected';
                     return (
-                      <tr key={video.id} className="hover:bg-[#F8FAFC] transition-colors">
+                      <tr
+                        key={video.id}
+                        onClick={() => onSelectVideo?.(video)}
+                        className="hover:bg-[#F8FAFC] transition-colors cursor-pointer group"
+                      >
                         <td className="py-4 px-6">
                           <div className="flex items-center gap-3.5">
-                            <img
-                              src={video.thumbnailUrl || video.thumbnail_url}
-                              alt={video.title}
-                              className="w-16 h-10 object-cover rounded-lg bg-slate-900 border border-[#DCE7F6] shrink-0"
-                            />
+                            <div className="relative w-16 h-10 rounded-lg overflow-hidden bg-slate-900 border border-[#DCE7F6] shrink-0">
+                              <img
+                                src={video.thumbnailUrl || video.thumbnail_url}
+                                alt={video.title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                              />
+                              <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <Play size={14} className="text-white fill-white" />
+                              </div>
+                            </div>
                             <div className="min-w-0 max-w-sm">
-                              <div className="font-semibold text-[#0F172A] truncate">{video.title}</div>
+                              <div className="font-semibold text-[#0F172A] group-hover:text-[#2563EB] transition-colors truncate">
+                                {video.title}
+                              </div>
                               <div className="text-[11px] text-[#64748B] mt-0.5">{video.category}</div>
                             </div>
                           </div>
@@ -488,6 +503,18 @@ export const StudioView: React.FC<StudioViewProps> = ({
                               Pending Audit
                             </span>
                           )}
+                        </td>
+                        <td className="py-4 px-6 text-right">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectVideo?.(video);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#E0EDFF] hover:bg-[#BFDBFE] text-[#1D4ED8] transition-colors cursor-pointer"
+                          >
+                            <Play size={12} fill="currentColor" />
+                            <span>{isApproved ? 'Watch' : 'Preview'}</span>
+                          </button>
                         </td>
                       </tr>
                     );

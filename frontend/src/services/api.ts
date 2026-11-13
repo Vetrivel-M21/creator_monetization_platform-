@@ -2,6 +2,7 @@ export const API_BASE = '/api';
 
 export function getAuthToken(): string {
   return (
+    localStorage.getItem('aura_token') ||
     localStorage.getItem('kinetic_token') ||
     localStorage.getItem('creator_token') ||
     localStorage.getItem('armss_token') ||

@@ -19,7 +19,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     const handle = v.creatorHandle || v.creator_name || 'creator';
     if (!creatorsMap.has(handle)) {
       creatorsMap.set(handle, {
-        name: v.creatorName || v.creator_name || 'ARMSS Creator',
+        name: v.creatorName || v.creator_name || 'Aura Creator',
         handle: handle,
         avatar: v.creatorAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${handle}`,
         videosCount: 0,

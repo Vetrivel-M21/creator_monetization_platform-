@@ -108,7 +108,7 @@ class _LegalScreenState extends State<LegalScreen> with SingleTickerProviderStat
               SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'ARMSS Entertainment Creator Agreement. All creators uploading content agree to 100% human-authored videos and statutory anti-AI compliance.',
+                  'Aura Entertainment Creator Agreement. All creators uploading content agree to 100% human-authored videos and statutory anti-AI compliance.',
                   style: TextStyle(fontSize: 12, color: AppColors.primaryDark, height: 1.4),
                 ),
               ),
@@ -120,7 +120,7 @@ class _LegalScreenState extends State<LegalScreen> with SingleTickerProviderStat
         _buildSectionCard(
           title: '1. Human-Authored Content Mandate',
           body:
-              'ARMSS is committed exclusively to human craftsmanship. All uploaded content—both Landscape (16:9) long-form and Vertical Shorts (9:16)—must be 100% created, authored, and voice-recorded by human creators.\n\nAutomated AI scrapers, voice synthesizers, or generative video models are strictly banned. Accounts violating this policy are permanently suspended and royalties forfeited.',
+              'Aura is committed exclusively to human craftsmanship. All uploaded content—both Landscape (16:9) long-form and Vertical Shorts (9:16)—must be 100% created, authored, and voice-recorded by human creators.\n\nAutomated AI scrapers, voice synthesizers, or generative video models are strictly banned. Accounts violating this policy are permanently suspended and royalties forfeited.',
         ),
         const SizedBox(height: 14),
 
@@ -141,7 +141,7 @@ class _LegalScreenState extends State<LegalScreen> with SingleTickerProviderStat
         _buildSectionCard(
           title: '4. Copyright & Streaming Rights',
           body:
-              'Creators maintain copyright over their uploaded media while granting ARMSS a worldwide, non-exclusive license to transcode, store, and stream adaptive CMAF HLS bitrate feeds to viewers.',
+              'Creators maintain copyright over their uploaded media while granting Aura a worldwide, non-exclusive license to transcode, store, and stream adaptive CMAF HLS bitrate feeds to viewers.',
         ),
         const SizedBox(height: 14),
 
@@ -207,7 +207,7 @@ class _LegalScreenState extends State<LegalScreen> with SingleTickerProviderStat
         _buildSectionCard(
           title: '4. Data Retention & Deletion Rights',
           body:
-              'Users have the right to inspect, correct, or request deletion of their account records by contacting ARMSS Support Desk or emailing legal@armss.com.',
+              'Users have the right to inspect, correct, or request deletion of their account records by contacting Aura Support Desk or emailing legal@aura.com.',
         ),
         const SizedBox(height: 24),
       ],

@@ -308,7 +308,7 @@ class _SupportScreenState extends State<SupportScreen> {
                                                 Icon(Icons.shield, size: 12, color: Color(0xFF60A5FA)),
                                                 SizedBox(width: 4),
                                                 Text(
-                                                  'ARMSS Admin',
+                                                  'Aura Admin',
                                                   style: TextStyle(
                                                     fontSize: 10,
                                                     fontWeight: FontWeight.bold,

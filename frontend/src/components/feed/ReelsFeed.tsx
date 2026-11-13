@@ -326,7 +326,7 @@ const ReelPlayerCard: React.FC<ReelPlayerCardProps> = ({
         </div>
 
         <p className="text-xs text-zinc-200 line-clamp-2 leading-snug pointer-events-auto">
-          {video.title} — {video.description || 'Exclusive creator short on ARMSS Entertainment.'}
+          {video.title} — {video.description || 'Exclusive creator short on Aura Entertainment.'}
         </p>
 
         <div className="flex items-center justify-between text-[11px] text-zinc-400 font-mono">
@@ -434,7 +434,7 @@ export const ReelsFeed: React.FC<ReelsFeedProps> = ({
           </div>
         ) : (
           videos.map((video, idx) => {
-            const creatorName = video.creator_name || video.creatorName || 'ARMSS Creator';
+            const creatorName = video.creator_name || video.creatorName || 'Aura Creator';
             const isSubscribed = !!subscribedCreators[creatorName];
             const isBookmarked = !!bookmarkedVideos[video.id];
             const isLiked = !!likedVideos[video.id];

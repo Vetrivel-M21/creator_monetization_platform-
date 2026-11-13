@@ -30,7 +30,7 @@ class CreatorMonetizationApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ARMSS Entertainment',
+      title: 'Aura Entertainment',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       home: const MainShellScreen(),

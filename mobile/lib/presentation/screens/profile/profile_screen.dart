@@ -746,7 +746,7 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'ARMSS Creator Platform v1.0.0',
+                  'Aura Entertainment v1.0.0',
                   style: TextStyle(fontSize: 11, color: AppColors.textMuted),
                 ),
               ],

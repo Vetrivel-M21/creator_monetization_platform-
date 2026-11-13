@@ -34,7 +34,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpl
   const [category, setCategory] = useState('self');
   const [videoType, setVideoType] = useState<'landscape' | 'short'>('landscape');
   const [durationBucket, setDurationBucket] = useState('10m');
-  const [tagsInput, setTagsInput] = useState('#creator, #media, #armss');
+  const [tagsInput, setTagsInput] = useState('#creator, #media, #aura');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -100,7 +100,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpl
       // Ensure valid creator credentials exist before streaming large multipart payload
       if (!authService.getStoredToken()) {
         try {
-          await authService.loginWithPassword('creator1@armss.com', 'admin123');
+          await authService.loginWithPassword('creator1@armss.com', 'admin123').catch(() =>
+            authService.loginWithPassword('creator1@aura.com', 'admin123')
+          );
         } catch {
           // If auto-login fails, let the request proceed to get server's message
         }
@@ -446,7 +448,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpl
                 disabled={isSubmitting || !selectedFileName}
                 className="btn-primary-pill px-6 py-2.5 text-xs font-bold cursor-pointer disabled:opacity-40"
               >
-                {isSubmitting ? 'Uploading & Processing...' : 'Publish to ARMSS Entertainment'}
+                {isSubmitting ? 'Uploading & Processing...' : 'Publish to Aura Entertainment'}
               </button>
             </div>
           </form>

@@ -185,7 +185,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
               ),
               const SizedBox(height: 8),
               const Text(
-                'Videos you watch on ARMSS Entertainment will automatically be recorded here.',
+                'Videos you watch on Aura Entertainment will automatically be recorded here.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.4),
               ),

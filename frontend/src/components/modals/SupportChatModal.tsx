@@ -48,7 +48,7 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
       }
     } catch (err: any) {
       if (isInitial) {
-        setError(err.message || 'Failed to connect to ARMSS Creator Support Desk');
+        setError(err.message || 'Failed to connect to Aura Creator Support Desk');
       }
     } finally {
       if (isInitial) setIsLoading(false);
@@ -114,7 +114,7 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-300 font-normal">
-                Direct messaging with ARMSS Platform Admins
+                Direct messaging with Aura Platform Admins
               </p>
             </div>
           </div>
@@ -194,7 +194,7 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
                   <div className="flex items-center gap-1.5 mb-1 px-1 text-[11px] text-slate-400">
                     {isAdmin ? (
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 font-mono">
-                        <Shield size={10} /> ARMSS Admin Desk
+                        <Shield size={10} /> Aura Admin Desk
                       </span>
                     ) : (
                       <span className="text-slate-500 font-mono font-medium">You</span>
