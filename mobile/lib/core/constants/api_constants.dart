@@ -43,8 +43,11 @@ class ApiConstants {
 
   /// Converts relative path into absolute URL using the active environment
   static String toAbsoluteUrl(String path) {
-    final clean = path.trim();
+    var clean = path.trim();
     if (clean.isEmpty) return clean;
+    if (clean.startsWith('http://entertainment.aurapictures.online')) {
+      clean = clean.replaceFirst('http://', 'https://');
+    }
     if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('blob:')) {
       return clean;
     }
