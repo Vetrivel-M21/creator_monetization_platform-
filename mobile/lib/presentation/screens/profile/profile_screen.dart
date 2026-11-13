@@ -65,7 +65,7 @@ class ProfileScreen extends StatelessWidget {
     final nameController = TextEditingController(text: user.name);
     final mobileController = TextEditingController(text: user.mobile);
     final ageController = TextEditingController(
-      text: user.age > 0 ? user.age.toString() : '24',
+      text: user.age > 0 ? user.age.toString() : '',
     );
     final channelNameController = TextEditingController(
       text: user.channelName.isNotEmpty ? user.channelName : user.name,
@@ -116,7 +116,7 @@ class ProfileScreen extends StatelessWidget {
 
               final ageText = ageController.text.trim();
               final age = int.tryParse(ageText) ?? 0;
-              if (age < 10 || age > 120) {
+              if (ageText.isNotEmpty && (age < 10 || age > 120)) {
                 setModalState(() => errorMessage = 'Please enter a valid age (10-120).');
                 return;
               }
@@ -363,7 +363,7 @@ class ProfileScreen extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'Age *',
+                                'Age',
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
@@ -376,7 +376,7 @@ class ProfileScreen extends StatelessWidget {
                                 enabled: !isSaving,
                                 keyboardType: TextInputType.number,
                                 decoration: InputDecoration(
-                                  hintText: '25',
+                                  hintText: 'e.g. 25',
                                   prefixIcon: const Icon(Icons.cake_outlined, size: 18),
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                                   border: OutlineInputBorder(
@@ -615,7 +615,7 @@ class ProfileScreen extends StatelessWidget {
                             _buildDataBadge(
                               icon: Icons.cake_rounded,
                               label: 'Age',
-                              value: '${user.age > 0 ? user.age : 24} yrs',
+                              value: user.age > 0 ? '${user.age} yrs' : 'Not set',
                             ),
                             Container(width: 1, height: 28, color: AppColors.surfaceBorder),
                             _buildDataBadge(

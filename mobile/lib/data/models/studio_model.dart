@@ -7,7 +7,7 @@ class DurationQuotaItem {
   final int max;
   final double ratePerVideo;
 
-  DurationQuotaItem({
+  const DurationQuotaItem({
     required this.key,
     required this.label,
     required this.current,
@@ -183,13 +183,13 @@ class CreatorStudioModel {
     return CreatorStudioModel(
       channelName: user.channelName.isNotEmpty ? user.channelName : user.name,
       channelLogo: user.displayAvatar,
-      channelDescription: user.channelDescription.isNotEmpty ? user.channelDescription : 'Original human creator channel',
+      channelDescription: user.channelDescription,
       creatorName: user.name,
-      age: user.age > 0 ? user.age : 25,
+      age: user.age,
       email: user.email,
-      mobile: user.mobile.isNotEmpty ? user.mobile : '+91 98765 43210',
+      mobile: user.mobile,
       walletBalance: balance,
-      welcomeCredit: 250.00,
+      welcomeCredit: 0.0,
       tier: user.tier.isNotEmpty ? '${user.tier[0].toUpperCase()}${user.tier.substring(1)}' : 'Silver',
       isKycVerified: isVerified,
       kycHolderName: holderName,
@@ -203,6 +203,38 @@ class CreatorStudioModel {
       totalApprovedVideos: totalVideos,
       buckets: parsedBuckets,
       transactions: parsedTransactions,
+    );
+  }
+
+  factory CreatorStudioModel.empty([UserModel? user]) {
+    return CreatorStudioModel(
+      channelName: user?.channelName.isNotEmpty == true ? user!.channelName : (user?.name ?? 'Creator Channel'),
+      channelLogo: user?.displayAvatar ?? '',
+      channelDescription: user?.channelDescription ?? '',
+      creatorName: user?.name ?? 'Creator',
+      age: user?.age ?? 0,
+      email: user?.email ?? '',
+      mobile: user?.mobile ?? '',
+      walletBalance: user?.walletAmount ?? 0.0,
+      welcomeCredit: 0.0,
+      tier: user?.tier.isNotEmpty == true ? '${user!.tier[0].toUpperCase()}${user.tier.substring(1)}' : 'Silver',
+      isKycVerified: false,
+      kycHolderName: user?.name ?? '',
+      kycAadhaar: '',
+      kycPan: '',
+      kycBank: '',
+      kycAccount: '',
+      kycIfsc: '',
+      silverRewardPaid: false,
+      totalApprovedVideos: 0,
+      buckets: [
+        DurationQuotaItem(key: '30m', label: '30+ Min Videos', current: 0, max: 10, ratePerVideo: 80.0),
+        DurationQuotaItem(key: '20m', label: '20-29 Min Videos', current: 0, max: 10, ratePerVideo: 60.0),
+        DurationQuotaItem(key: '10m', label: '10-19 Min Videos', current: 0, max: 10, ratePerVideo: 50.0),
+        DurationQuotaItem(key: '5m', label: '5-9 Min Videos', current: 0, max: 10, ratePerVideo: 35.0),
+        DurationQuotaItem(key: '2m', label: '2-4 Min Videos', current: 0, max: 10, ratePerVideo: 25.0),
+      ],
+      transactions: const [],
     );
   }
 

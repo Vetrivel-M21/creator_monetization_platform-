@@ -576,7 +576,7 @@ class ApiService {
         );
       } catch (_) {}
     }
-    return CreatorStudioModel.sample();
+    return CreatorStudioModel.empty(user);
   }
 
   Future<Map<String, dynamic>> submitKyc({

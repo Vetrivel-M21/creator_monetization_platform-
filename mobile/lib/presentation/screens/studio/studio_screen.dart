@@ -59,7 +59,7 @@ class _StudioScreenState extends State<StudioScreen> {
     final balance = studio.availableBalance;
     final bankInfo = studio.kycBank.isNotEmpty
         ? '${studio.kycBank} •••• ${studio.kycAccount.length > 4 ? studio.kycAccount.substring(studio.kycAccount.length - 4) : studio.kycAccount}'
-        : 'Bank Account •••• 4021';
+        : 'No bank account linked';
     final kycTag = studio.isKycVerified ? '(KYC Verified)' : '(KYC Pending Approval)';
     showModalBottomSheet(
       context: context,
