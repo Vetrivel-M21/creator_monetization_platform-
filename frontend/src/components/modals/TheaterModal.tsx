@@ -1,7 +1,17 @@
 import React, { useState } from 'react';
-import { X, Heart, MessageCircle, Share2, Check, UserPlus, Eye, Clock } from 'lucide-react';
+import { X, Heart, MessageCircle, Share2, Check, UserPlus, Eye, Clock, Loader2, AlertTriangle } from 'lucide-react';
 import type { Video } from '../../types';
 import { HLSPlayer } from '../player/HLSPlayer';
+
+const API_HOST = 'https://entertainment.aurapictures.online';
+
+function toAbsoluteUrl(url: string | undefined): string {
+  if (!url || url.trim() === '') return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url.replace(/^http:\/\//, 'https://');
+  }
+  return API_HOST + (url.startsWith('/') ? url : '/' + url);
+}
 
 interface TheaterModalProps {
   video: Video | null;
@@ -34,13 +44,25 @@ export const TheaterModal: React.FC<TheaterModalProps> = ({
   const creatorName = video.creatorName || video.creator_name || 'ARMSS Creator';
   const creatorHandle = video.creatorHandle || video.creator_name?.toLowerCase().replace(/\s+/g, '_') || 'creator';
   const creatorAvatar = video.creatorAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${creatorHandle}`;
-  const streamUrl = video.hlsUrl || video.hls_url || video.videoUrl || video.video_url || '';
-  const thumbnailUrl = video.thumbnailUrl || video.thumbnail_url || '';
+  const thumbnailUrl = toAbsoluteUrl(video.thumbnailUrl || video.thumbnail_url);
   const views = video.views ?? video.views_count ?? 0;
   const likes = video.likes ?? video.likes_count ?? 0;
   const commentsCount = video.commentsCount ?? video.comments_count ?? 0;
   const duration = video.duration || `${video.duration_minutes || 10}:00`;
   const durationBucket = (video.durationBucket || '10M').toUpperCase();
+
+  // Build an absolute stream URL with fallback cascade: HLS → progressive MP4
+  const rawHls = video.hlsUrl || video.hls_url || '';
+  const rawMp4 = video.videoUrl || video.video_url || '';
+  const hlsUrl = toAbsoluteUrl(rawHls);
+  const mp4Url = toAbsoluteUrl(rawMp4);
+  const transcodeStatus = video.transcode_status || video.transcodeStatus || 'ready';
+  const isProcessing = transcodeStatus === 'processing' || transcodeStatus === 'pending';
+
+  // Prefer HLS; fall back to direct MP4 (which always exists in /data/masters/); 
+  // if nothing exists and still processing, show processing overlay
+  const streamUrl = hlsUrl || mp4Url;
+  const hasPlayableUrl = streamUrl.trim() !== '';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/60 backdrop-blur-md animate-fade-in">
@@ -57,6 +79,11 @@ export const TheaterModal: React.FC<TheaterModalProps> = ({
             <span className="text-xs text-[#64748B] font-mono flex items-center gap-1.5 font-normal">
               <Clock size={13} /> {duration}
             </span>
+            {isProcessing && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 flex items-center gap-1">
+                <Loader2 size={10} className="animate-spin" /> Transcoding
+              </span>
+            )}
           </div>
 
           <button
@@ -69,12 +96,30 @@ export const TheaterModal: React.FC<TheaterModalProps> = ({
 
         {/* Video Player Frame with Adaptive Bitrate Streaming */}
         <div className="relative bg-black w-full aspect-video flex items-center justify-center overflow-hidden">
-          <HLSPlayer
-            src={streamUrl}
-            poster={thumbnailUrl}
-            autoPlay
-            className="w-full h-full"
-          />
+          {hasPlayableUrl ? (
+            <HLSPlayer
+              src={streamUrl}
+              poster={thumbnailUrl}
+              autoPlay
+              className="w-full h-full"
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
+              {isProcessing ? (
+                <>
+                  <Loader2 size={36} className="animate-spin text-blue-400" />
+                  <p className="text-white text-sm font-semibold">Video is being transcoded…</p>
+                  <p className="text-white/60 text-xs">HLS streams will be available shortly. You can still approve or reject this video.</p>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle size={36} className="text-amber-400" />
+                  <p className="text-white text-sm font-semibold">Stream unavailable</p>
+                  <p className="text-white/60 text-xs">No playable media URL found for this video.</p>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Video Metadata & Controls */}

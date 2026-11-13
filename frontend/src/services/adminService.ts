@@ -1,9 +1,52 @@
 import { request } from './api';
 import type { Video, AdminUserAuditItem, AdminKYCItem, PlatformSettings, Category, SupportThread, SupportMessage } from '../types';
 
+const API_HOST = 'https://entertainment.aurapictures.online';
+
+/** Ensures a media URL is absolute and uses HTTPS */
+function absoluteMediaUrl(url: any): string {
+  if (!url || typeof url !== 'string' || url.trim() === '') return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url.replace(/^http:\/\//, 'https://');
+  }
+  // Relative path — prefix with API host
+  return API_HOST + (url.startsWith('/') ? url : '/' + url);
+}
+
+/** Normalize a raw video API response into the standard Video shape */
+function normalizeAdminVideo(v: any): Video {
+  const hls = absoluteMediaUrl(v.hls_url || v.hlsUrl);
+  const mp4 = absoluteMediaUrl(v.video_url || v.videoUrl);
+  const thumb = absoluteMediaUrl(v.thumbnail_url || v.thumbnailUrl);
+  return {
+    ...v,
+    id: v.id,
+    title: v.title || '',
+    hls_url: hls,
+    hlsUrl: hls,
+    video_url: mp4,
+    videoUrl: mp4,
+    thumbnail_url: thumb,
+    thumbnailUrl: thumb,
+    transcode_status: v.transcode_status || v.transcodeStatus || 'ready',
+    transcodeStatus: v.transcode_status || v.transcodeStatus || 'ready',
+    creator_name: v.creator_name || v.creatorName || 'Creator',
+    creatorName: v.creator_name || v.creatorName || 'Creator',
+    duration_minutes: v.duration_minutes || v.durationMinutes || 0,
+    durationMinutes: v.duration_minutes || v.durationMinutes || 0,
+    status: v.status || 'pending',
+    views: v.views_count ?? v.views ?? 0,
+    views_count: v.views_count ?? v.views ?? 0,
+    likes: v.likes_count ?? v.likes ?? 0,
+    likes_count: v.likes_count ?? v.likes ?? 0,
+    commentsCount: v.comments_count ?? v.commentsCount ?? 0,
+    comments_count: v.comments_count ?? v.commentsCount ?? 0,
+  };
+}
+
 export const adminService = {
   fetchVideos: () =>
-    request<Video[]>('/admin/videos'),
+    request<any[]>('/admin/videos').then(data => Array.isArray(data) ? data.map(normalizeAdminVideo) : []),
 
   moderateVideo: (videoId: string, action: 'approve' | 'reject', reason?: string) =>
     request<any>(`/admin/videos/${videoId}/verify`, {

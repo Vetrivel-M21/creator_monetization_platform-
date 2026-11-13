@@ -73,7 +73,11 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
     setErrorMsg(null);
     setIsBuffering(true);
 
-    let activeSrc = src;
+    // Ensure absolute HTTPS URL (never relative, never http on https page)
+    let activeSrc = src.trim();
+    if (!activeSrc.startsWith('http://') && !activeSrc.startsWith('https://')) {
+      activeSrc = 'https://entertainment.aurapictures.online' + (activeSrc.startsWith('/') ? activeSrc : '/' + activeSrc);
+    }
     if (typeof window !== 'undefined' && window.location.protocol === 'https:' && activeSrc.startsWith('http://')) {
       activeSrc = activeSrc.replace('http://', 'https://');
     }
@@ -133,15 +137,27 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
             default: {
               hls.destroy();
               hlsRef.current = null;
-              // Seamless fallback to direct MP4
-              const directMp4 = src.includes('.m3u8') ? src.replace('master.m3u8', 'master.mp4') : src;
+              // Seamless fallback to direct MP4 (absolute URL)
+              let directMp4 = src;
+              if (src.includes('.m3u8')) {
+                directMp4 = src.replace('master.m3u8', 'master.mp4').split('?')[0];
+              }
+              // Ensure absolute HTTPS
+              if (!directMp4.startsWith('http://') && !directMp4.startsWith('https://')) {
+                directMp4 = 'https://entertainment.aurapictures.online' + (directMp4.startsWith('/') ? directMp4 : '/' + directMp4);
+              }
+              directMp4 = directMp4.replace(/^http:\/\//, 'https://');
+
               if (video.src !== directMp4) {
+                setIsBuffering(true);
                 video.src = directMp4;
+                video.load();
                 if (autoPlay) {
                   video.play().catch(() => setIsPlaying(false));
                 }
               } else {
-                setErrorMsg('Video playback unavailable.');
+                setIsBuffering(false);
+                setErrorMsg('Stream unavailable — video may still be processing.');
               }
               break;
             }
