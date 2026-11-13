@@ -53,6 +53,7 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
   const [activeHeight, setActiveHeight] = useState<number | null>(null);
 
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const networkRetryCountRef = useRef<number>(0);
 
   const handleMouseMove = () => {
     setShowControls(true);
@@ -72,6 +73,7 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
 
     setErrorMsg(null);
     setIsBuffering(true);
+    networkRetryCountRef.current = 0;
 
     // Ensure absolute HTTPS URL (never relative, never http on https page)
     let activeSrc = src.trim();
@@ -113,7 +115,24 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
         setQualityLevels(data.levels);
         setIsBuffering(false);
         if (autoPlay) {
-          video.play().catch(() => setIsPlaying(false));
+          const p = video.play();
+          if (p !== undefined) {
+            p.then(() => {
+              setIsPlaying(true);
+              setIsBuffering(false);
+            }).catch(() => {
+              // Unmuted autoplay blocked by browser policy. Retry with muted sound:
+              video.muted = true;
+              setIsMuted(true);
+              video.play().then(() => {
+                setIsPlaying(true);
+                setIsBuffering(false);
+              }).catch(() => {
+                setIsPlaying(false);
+                setIsBuffering(false);
+              });
+            });
+          }
         }
       });
 
@@ -124,51 +143,88 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
         }
       });
 
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        if (data.fatal) {
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              // Try to recover network error first
-              hls.startLoad();
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              hls.recoverMediaError();
-              break;
-            default: {
-              hls.destroy();
-              hlsRef.current = null;
-              // Seamless fallback to direct MP4 (absolute URL)
-              let directMp4 = src;
-              if (src.includes('.m3u8')) {
-                directMp4 = src.replace('master.m3u8', 'master.mp4').split('?')[0];
-              }
-              // Ensure absolute HTTPS
-              if (!directMp4.startsWith('http://') && !directMp4.startsWith('https://')) {
-                directMp4 = 'https://entertainment.aurapictures.online' + (directMp4.startsWith('/') ? directMp4 : '/' + directMp4);
-              }
-              directMp4 = directMp4.replace(/^http:\/\//, 'https://');
+      const triggerFallback = () => {
+        if (hlsRef.current) {
+          hlsRef.current.destroy();
+          hlsRef.current = null;
+        }
 
-              if (video.src !== directMp4) {
-                setIsBuffering(true);
-                video.src = directMp4;
-                video.load();
-                if (autoPlay) {
-                  video.play().catch(() => setIsPlaying(false));
-                }
-              } else {
-                setIsBuffering(false);
-                setErrorMsg('Stream unavailable — video may still be processing.');
-              }
-              break;
-            }
+        let directMp4 = src;
+        if (src.includes('.m3u8')) {
+          directMp4 = src.replace('master.m3u8', 'master.mp4').split('?')[0];
+        }
+        if (!directMp4.startsWith('http://') && !directMp4.startsWith('https://')) {
+          directMp4 = (typeof window !== 'undefined' ? window.location.origin : 'https://entertainment.aurapictures.online') + 
+            (directMp4.startsWith('/') ? directMp4 : '/' + directMp4);
+        }
+        directMp4 = directMp4.replace(/^http:\/\//, 'https://');
+
+        if (video.src !== directMp4) {
+          setIsBuffering(true);
+          video.src = directMp4;
+          video.load();
+          if (autoPlay) {
+            video.play().catch(() => {
+              setIsPlaying(false);
+              setIsBuffering(false);
+            });
           }
+        } else {
+          setIsBuffering(false);
+          setErrorMsg('Stream unavailable — video may still be processing.');
+        }
+      };
+
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (!data.fatal) return;
+
+        console.warn('[HLSPlayer] Fatal HLS error:', data.type, data.details, data.response);
+
+        switch (data.type) {
+          case Hls.ErrorTypes.NETWORK_ERROR: {
+            const statusCode = data.response?.code;
+            if (statusCode === 404 || statusCode === 409 || networkRetryCountRef.current >= 2) {
+              console.warn('[HLSPlayer] Network error fatal/404/409 — falling back to direct MP4');
+              triggerFallback();
+            } else {
+              networkRetryCountRef.current += 1;
+              console.log(`[HLSPlayer] Retrying network stream load (attempt ${networkRetryCountRef.current})...`);
+              hls.startLoad();
+            }
+            break;
+          }
+          case Hls.ErrorTypes.MEDIA_ERROR:
+            hls.recoverMediaError();
+            break;
+          default:
+            triggerFallback();
+            break;
         }
       });
     } else if (video.canPlayType('application/vnd.apple.mpegurl') || !isHlsStream) {
       // Native Safari HLS or direct MP4 stream
-      video.src = src;
+      video.src = activeSrc;
+      video.load();
       if (autoPlay) {
-        video.play().catch(() => setIsPlaying(false));
+        const p = video.play();
+        if (p !== undefined) {
+          p.then(() => {
+            setIsPlaying(true);
+            setIsBuffering(false);
+          }).catch(() => {
+            video.muted = true;
+            setIsMuted(true);
+            video.play().then(() => {
+              setIsPlaying(true);
+              setIsBuffering(false);
+            }).catch(() => {
+              setIsPlaying(false);
+              setIsBuffering(false);
+            });
+          });
+        }
+      } else {
+        setIsBuffering(false);
       }
     }
 
@@ -185,13 +241,40 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
     const video = videoRef.current;
     if (!video) return;
 
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
-    const onWaiting = () => setIsBuffering(true);
-    const onPlaying = () => setIsBuffering(false);
+    const onPlay = () => {
+      setIsPlaying(true);
+      setIsBuffering(false);
+    };
+    const onPause = () => {
+      setIsPlaying(false);
+      setIsBuffering(false);
+    };
+    const onWaiting = () => {
+      if (!video.paused) {
+        setIsBuffering(true);
+      }
+    };
+    const onPlaying = () => {
+      setIsPlaying(true);
+      setIsBuffering(false);
+    };
+    const onCanPlay = () => {
+      setIsBuffering(false);
+    };
+    const onLoadedData = () => {
+      setIsBuffering(false);
+    };
     const onLoadedMetadata = () => {
       setDuration(video.duration);
       setIsBuffering(false);
+    };
+    const onError = () => {
+      setIsBuffering(false);
+      setIsPlaying(false);
+      const code = video.error?.code;
+      const message = video.error?.message || 'Error loading media source.';
+      console.warn('[HLSPlayer] Video tag error:', code, message);
+      setErrorMsg(`Video playback error (${code || 'unknown'}): ${message}`);
     };
 
     const onTime = () => {
@@ -207,6 +290,7 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
 
     const onVideoEnded = () => {
       setIsPlaying(false);
+      setIsBuffering(false);
       if (onEnded) onEnded();
     };
 
@@ -214,18 +298,24 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
     video.addEventListener('pause', onPause);
     video.addEventListener('waiting', onWaiting);
     video.addEventListener('playing', onPlaying);
+    video.addEventListener('canplay', onCanPlay);
+    video.addEventListener('loadeddata', onLoadedData);
     video.addEventListener('loadedmetadata', onLoadedMetadata);
     video.addEventListener('timeupdate', onTime);
     video.addEventListener('ended', onVideoEnded);
+    video.addEventListener('error', onError);
 
     return () => {
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
       video.removeEventListener('waiting', onWaiting);
       video.removeEventListener('playing', onPlaying);
+      video.removeEventListener('canplay', onCanPlay);
+      video.removeEventListener('loadeddata', onLoadedData);
       video.removeEventListener('loadedmetadata', onLoadedMetadata);
       video.removeEventListener('timeupdate', onTime);
       video.removeEventListener('ended', onVideoEnded);
+      video.removeEventListener('error', onError);
     };
   }, [onTimeUpdate, onEnded]);
 
@@ -234,9 +324,30 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
     const video = videoRef.current;
     if (!video) return;
     if (video.paused) {
-      video.play().catch(() => {});
+      setIsBuffering(true);
+      const p = video.play();
+      if (p !== undefined) {
+        p.then(() => {
+          setIsPlaying(true);
+          setIsBuffering(false);
+        }).catch((err) => {
+          console.warn('[HLSPlayer] Unmuted play blocked, retrying muted:', err);
+          video.muted = true;
+          setIsMuted(true);
+          video.play().then(() => {
+            setIsPlaying(true);
+            setIsBuffering(false);
+          }).catch((err2) => {
+            console.error('[HLSPlayer] Play completely failed:', err2);
+            setIsPlaying(false);
+            setIsBuffering(false);
+          });
+        });
+      }
     } else {
       video.pause();
+      setIsPlaying(false);
+      setIsBuffering(false);
     }
   }, []);
 
@@ -319,8 +430,8 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
         className="w-full h-full object-contain cursor-pointer"
       />
 
-      {/* Buffering Spinner */}
-      {isBuffering && (
+      {/* Buffering Spinner: only show when video is actively attempting to play and buffering */}
+      {isBuffering && isPlaying && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-black/25">
           <div className="w-12 h-12 rounded-full border-3 border-emerald-500/20 border-t-emerald-400 animate-spin" />
         </div>

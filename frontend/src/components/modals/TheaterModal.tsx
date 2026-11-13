@@ -59,9 +59,10 @@ export const TheaterModal: React.FC<TheaterModalProps> = ({
   const transcodeStatus = video.transcode_status || video.transcodeStatus || 'ready';
   const isProcessing = transcodeStatus === 'processing' || transcodeStatus === 'pending';
 
-  // Prefer HLS; fall back to direct MP4 (which always exists in /data/masters/); 
-  // if nothing exists and still processing, show processing overlay
-  const streamUrl = hlsUrl || mp4Url;
+  // For newly uploaded videos still in 'processing' status, the raw master MP4
+  // is immediately available on disk, so admin can preview it right away without waiting!
+  // When transcoding is 'ready', prefer adaptive HLS stream.
+  const streamUrl = isProcessing ? (mp4Url || hlsUrl) : (hlsUrl || mp4Url);
   const hasPlayableUrl = streamUrl.trim() !== '';
 
   return (
