@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   Film,
@@ -18,10 +18,13 @@ import {
   X,
   Camera,
   Play,
+  TrendingUp,
+  RefreshCw,
 } from 'lucide-react';
 import type { User as UserType, Video, WalletBalance, QuotaProgress, WalletTx } from '../types';
 import { authService } from '../services/authService';
 import { videoService } from '../services/videoService';
+import { walletService } from '../services/walletService';
 
 interface StudioViewProps {
   user: UserType;
@@ -53,6 +56,62 @@ export const StudioView: React.FC<StudioViewProps> = ({
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'content' | 'monetization'>(
     activeSubTab === 'payouts' ? 'monetization' : (activeSubTab as 'dashboard' | 'content' | 'monetization') || 'dashboard'
   );
+
+  // Wallet State with Date Filters & Breakdown
+  const [walletData, setWalletData] = useState<WalletBalance | null>(wallet);
+  const [datePreset, setDatePreset] = useState<'all' | 'today' | '7d' | 'this_month' | '30d' | 'custom'>('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [txType, setTxType] = useState<'all' | 'credit' | 'debit'>('all');
+  const [isLoadingWallet, setIsLoadingWallet] = useState(false);
+
+  useEffect(() => {
+    if (wallet) {
+      setWalletData(wallet);
+    }
+  }, [wallet]);
+
+  const applyWalletFilter = async (preset: string, fromVal?: string, toVal?: string, typeVal?: 'all' | 'credit' | 'debit') => {
+    let from = fromVal !== undefined ? fromVal : customFrom;
+    let to = toVal !== undefined ? toVal : customTo;
+    const targetType = typeVal !== undefined ? typeVal : txType;
+    const now = new Date();
+
+    if (preset === 'today') {
+      from = now.toISOString().split('T')[0];
+      to = from;
+    } else if (preset === '7d') {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      from = d.toISOString().split('T')[0];
+      to = now.toISOString().split('T')[0];
+    } else if (preset === 'this_month') {
+      from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+      to = now.toISOString().split('T')[0];
+    } else if (preset === '30d') {
+      const d = new Date();
+      d.setDate(d.getDate() - 30);
+      from = d.toISOString().split('T')[0];
+      to = now.toISOString().split('T')[0];
+    } else if (preset === 'all') {
+      from = '';
+      to = '';
+    }
+
+    try {
+      setIsLoadingWallet(true);
+      const res = await walletService.getWallet(user.id, {
+        from: from || undefined,
+        to: to || undefined,
+        type: targetType !== 'all' ? targetType : undefined,
+      });
+      setWalletData(res);
+    } catch (err) {
+      console.error('Failed to filter wallet:', err);
+    } finally {
+      setIsLoadingWallet(false);
+    }
+  };
 
   // Edit Profile / Channel Modal state
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
@@ -529,38 +588,132 @@ export const StudioView: React.FC<StudioViewProps> = ({
       {/* Tab 3: Monetization & Payouts */}
       {currentTab === 'monetization' && (
         <div className="flex flex-col gap-8">
-          {/* Balance Hero Card */}
-          <div className="p-6 sm:p-8 rounded-3xl bg-[#FFFFFF] border border-[#DCE7F6] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="space-y-2">
-              <div className="text-[11px] uppercase font-mono font-semibold tracking-wider text-[#64748B]">
-                Available Withdrawable Balance
+          {/* Enhanced Earnings Metrics Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 1. Available Balance */}
+            <div className="p-6 rounded-3xl bg-white border border-[#DCE7F6] shadow-sm flex flex-col justify-between gap-4">
+              <div>
+                <div className="text-[11px] uppercase font-mono font-semibold tracking-wider text-[#64748B]">
+                  Available Balance
+                </div>
+                <div className="text-3xl font-extrabold font-mono tracking-tight text-[#0F172A] mt-1">
+                  ₹{(walletData?.availableBalance ?? wallet?.availableBalance ?? 250).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </div>
+                <p className="text-[11px] text-emerald-700 font-mono mt-1 flex items-center gap-1">
+                  <CheckCircle2 size={12} />
+                  <span>Withdrawable via IMPS/NEFT</span>
+                </p>
               </div>
-              <div className="text-3xl sm:text-4xl font-extrabold font-mono tracking-tight text-[#0F172A]">
-                ₹{(wallet?.availableBalance ?? 250).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                <button
+                  onClick={onOpenWithdraw}
+                  className="btn-primary-pill flex-1 py-2 text-xs font-semibold shadow-xs cursor-pointer inline-flex items-center justify-center gap-1.5"
+                >
+                  <ArrowDownRight size={14} />
+                  <span>Withdraw</span>
+                </button>
               </div>
-              <p className="text-xs text-emerald-700 flex items-center gap-1.5 font-mono">
-                <CheckCircle2 size={13} />
-                Includes ₹250 Welcome Credit {user.silver_reward_paid ? '+ ₹2,500 Silver' : ''}{user.gold_reward_paid ? ' + ₹5,000 Gold' : ''}{user.diamond_reward_paid ? ' + ₹10,000 Diamond' : ''}
-              </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                onClick={onOpenKYC}
-                className="btn-secondary-pill flex items-center gap-2 px-4 py-2.5 text-xs font-semibold cursor-pointer"
-              >
-                <ShieldCheck size={14} className="text-emerald-500" />
-                <span>{wallet?.kycVerified ? 'Bank KYC Verified ✓' : 'Verify Bank Account'}</span>
-              </button>
-
-              <button
-                onClick={onOpenWithdraw}
-                className="btn-primary-pill flex items-center gap-2 px-6 py-2.5 text-xs font-semibold shadow-md cursor-pointer"
-              >
-                <ArrowDownRight size={15} />
-                <span>Request Payout</span>
-              </button>
+            {/* 2. Lifetime Earnings */}
+            <div className="p-6 rounded-3xl bg-white border border-[#DCE7F6] shadow-sm flex flex-col justify-between gap-4">
+              <div>
+                <div className="text-[11px] uppercase font-mono font-semibold tracking-wider text-[#64748B]">
+                  Lifetime Net Earnings
+                </div>
+                <div className="text-3xl font-extrabold font-mono tracking-tight text-[#0F172A] mt-1">
+                  ₹{(walletData?.totalLifetimeEarnings ?? wallet?.totalLifetimeEarnings ?? walletData?.availableBalance ?? 250).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </div>
+                <div className="text-[11px] text-[#64748B] mt-1">
+                  All accrued royalties & milestones
+                </div>
+              </div>
+              <div className="text-[11px] font-mono text-[#2563EB] pt-2 border-t border-slate-100 flex items-center justify-between">
+                <span>Welcome: ₹250</span>
+                <span>{user.silver_reward_paid ? 'Silver: +₹2,500' : 'Silver: Active'}</span>
+              </div>
             </div>
+
+            {/* 3. Period Earnings (Filtered) */}
+            <div className="p-6 rounded-3xl bg-blue-50/50 border border-blue-200 shadow-sm flex flex-col justify-between gap-4">
+              <div>
+                <div className="text-[11px] uppercase font-mono font-semibold tracking-wider text-blue-800 flex items-center gap-1.5">
+                  <TrendingUp size={13} />
+                  <span>Period Income ({datePreset.toUpperCase()})</span>
+                </div>
+                <div className="text-3xl font-extrabold font-mono tracking-tight text-blue-950 mt-1">
+                  ₹{(walletData?.periodEarnings ?? walletData?.availableBalance ?? 250).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </div>
+                <div className="text-[11px] text-blue-700 mt-1">
+                  Earnings in selected time window
+                </div>
+              </div>
+              <div className="text-[11px] font-mono text-blue-800 pt-2 border-t border-blue-200/60">
+                Period Debits: ₹{(walletData?.periodWithdrawals ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+
+            {/* 4. Pending Withdrawals */}
+            <div className="p-6 rounded-3xl bg-white border border-[#DCE7F6] shadow-sm flex flex-col justify-between gap-4">
+              <div>
+                <div className="text-[11px] uppercase font-mono font-semibold tracking-wider text-[#64748B]">
+                  Pending Settlements
+                </div>
+                <div className="text-3xl font-extrabold font-mono tracking-tight text-[#0F172A] mt-1">
+                  ₹{(walletData?.pendingWithdrawals ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </div>
+                <p className="text-[11px] text-amber-700 font-mono mt-1 flex items-center gap-1">
+                  <Clock size={12} />
+                  <span>Bank settlement in-transit</span>
+                </p>
+              </div>
+              <div className="pt-2 border-t border-slate-100">
+                <button
+                  onClick={onOpenKYC}
+                  className="btn-secondary-pill w-full py-2 text-xs font-semibold cursor-pointer inline-flex items-center justify-center gap-1.5"
+                >
+                  <ShieldCheck size={14} className={walletData?.kycVerified ? 'text-emerald-500' : 'text-amber-500'} />
+                  <span>{walletData?.kycVerified ? 'KYC Verified ✓' : 'Verify Bank KYC'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Bank KYC Status Banner */}
+          <div className={`p-4 sm:p-5 rounded-3xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+            walletData?.kycVerified
+              ? 'bg-emerald-50/60 border-emerald-200'
+              : 'bg-amber-50/60 border-amber-200'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                walletData?.kycVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+              }`}>
+                {walletData?.kycVerified ? <ShieldCheck size={20} /> : <AlertTriangle size={20} />}
+              </div>
+              <div>
+                <div className={`text-sm font-bold ${walletData?.kycVerified ? 'text-emerald-950' : 'text-amber-950'}`}>
+                  {walletData?.kycVerified
+                    ? 'Verified Direct Bank Account Connected'
+                    : 'Bank KYC Verification Required for Payouts'}
+                </div>
+                <p className={`text-xs mt-0.5 ${walletData?.kycVerified ? 'text-emerald-800' : 'text-amber-800'}`}>
+                  {walletData?.kycVerified
+                    ? `Settling payouts to ${walletData.kycBank || 'Bank'} (${walletData.kycAccount || '•••• 4821'}).`
+                    : 'Submit your Aadhaar, PAN and Bank details to unlock direct royalties transfer and milestone bonuses.'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onOpenKYC}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold shrink-0 cursor-pointer transition-colors ${
+                walletData?.kycVerified
+                  ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800'
+                  : 'bg-amber-600 hover:bg-amber-700 text-white'
+              }`}
+            >
+              {walletData?.kycVerified ? 'Update Bank Details' : 'Verify Bank Account Now'}
+            </button>
           </div>
 
           {/* Pure Tier Partner Milestone Cards */}
@@ -759,44 +912,152 @@ export const StudioView: React.FC<StudioViewProps> = ({
             </div>
           </div>
 
-          {/* Ledger Table */}
-          <div className="rounded-3xl bg-[#FFFFFF] border border-[#DCE7F6] shadow-sm overflow-hidden">
-            <div className="p-5 sm:p-6 border-b border-[#DCE7F6] flex items-center justify-between">
+          {/* Date Filter & Transaction Ledger Section */}
+          <div className="rounded-3xl bg-[#FFFFFF] border border-[#DCE7F6] shadow-sm overflow-hidden space-y-4 p-5 sm:p-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#DCE7F6] pb-5">
               <div>
-                <h3 className="text-sm font-bold text-[#0F172A] tracking-tight">Ledger Transaction History</h3>
-                <p className="text-xs text-[#64748B] mt-0.5 font-normal">Immutable payout audit trail</p>
+                <h3 className="text-base font-bold text-[#0F172A] tracking-tight">Earnings Ledger & Payout History</h3>
+                <p className="text-xs text-[#64748B] mt-0.5">Filter by date ranges and transaction categories</p>
               </div>
-              <span className="text-xs text-[#64748B] font-mono">Direct Bank Rails</span>
-            </div>
 
-            {wallet?.transactions && wallet.transactions.length > 0 ? (
-              <div className="divide-y divide-[#DCE7F6]">
-                {wallet.transactions.map((tx: WalletTx) => (
-                  <div key={tx.id} className="p-4 sm:p-5 flex items-center justify-between hover:bg-[#F8FAFC] transition-colors">
-                    <div>
-                      <div className="text-xs font-semibold text-[#0F172A]">{tx.description}</div>
-                      <div className="text-[11px] text-[#64748B] font-mono mt-0.5">
-                        {new Date(tx.createdAt || tx.created_at || 0).toLocaleDateString()} • Ref #{tx.id.substring(0, 8)}
-                      </div>
-                    </div>
-                    <div className="text-right font-mono">
-                      <div
-                        className={`text-xs font-bold ${
-                          tx.type.includes('credit') ? 'text-emerald-600' : 'text-red-600'
-                        }`}
-                      >
-                        {tx.type.includes('credit') ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </div>
-                      <span className="text-[10px] uppercase font-semibold text-[#64748B]">
-                        {tx.status || 'completed'}
-                      </span>
-                    </div>
-                  </div>
+              {/* Date Filter Quick Chips */}
+              <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100 rounded-full border border-slate-200">
+                {(
+                  [
+                    { id: 'all', label: 'All Time' },
+                    { id: 'today', label: 'Today' },
+                    { id: '7d', label: '7 Days' },
+                    { id: 'this_month', label: 'This Month' },
+                    { id: '30d', label: '30 Days' },
+                    { id: 'custom', label: 'Custom' },
+                  ] as const
+                ).map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={() => {
+                      setDatePreset(preset.id);
+                      if (preset.id !== 'custom') {
+                        applyWalletFilter(preset.id);
+                      }
+                    }}
+                    className={`px-3 py-1 text-xs font-semibold rounded-full transition-all cursor-pointer ${
+                      datePreset === preset.id
+                        ? 'bg-white text-[#0F172A] shadow-xs'
+                        : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
                 ))}
               </div>
+            </div>
+
+            {/* Custom Date Range Picker (shown when custom is selected) */}
+            {datePreset === 'custom' && (
+              <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#DCE7F6] flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2 text-xs text-[#0F172A]">
+                  <span className="font-semibold">From:</span>
+                  <input
+                    type="date"
+                    value={customFrom}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    className="p-1.5 rounded-lg border border-[#DCE7F6] bg-white text-xs font-mono"
+                  />
+                </div>
+                <div className="flex items-center gap-2 text-xs text-[#0F172A]">
+                  <span className="font-semibold">To:</span>
+                  <input
+                    type="date"
+                    value={customTo}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    className="p-1.5 rounded-lg border border-[#DCE7F6] bg-white text-xs font-mono"
+                  />
+                </div>
+                <button
+                  onClick={() => applyWalletFilter('custom', customFrom, customTo)}
+                  className="px-4 py-1.5 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white font-semibold text-xs transition-colors cursor-pointer"
+                >
+                  Apply Date Range
+                </button>
+              </div>
+            )}
+
+            {/* Type Filter Controls */}
+            <div className="flex items-center justify-between gap-4 pt-1">
+              <div className="flex items-center gap-2">
+                {(
+                  [
+                    { id: 'all', label: 'All Transactions' },
+                    { id: 'credit', label: 'Income & Milestones' },
+                    { id: 'debit', label: 'Bank Withdrawals' },
+                  ] as const
+                ).map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      setTxType(t.id);
+                      applyWalletFilter(datePreset, undefined, undefined, t.id);
+                    }}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
+                      txType === t.id
+                        ? 'bg-[#E0EDFF] text-[#1D4ED8] font-semibold border border-[#BFDBFE]'
+                        : 'text-[#64748B] hover:text-[#0F172A]'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {isLoadingWallet && (
+                <div className="text-xs text-[#2563EB] flex items-center gap-1.5 font-mono">
+                  <RefreshCw size={12} className="animate-spin" />
+                  <span>Filtering ledger...</span>
+                </div>
+              )}
+            </div>
+
+            {/* Ledger Records Table */}
+            {walletData?.transactions && walletData.transactions.length > 0 ? (
+              <div className="divide-y divide-[#DCE7F6] border border-[#DCE7F6] rounded-2xl overflow-hidden mt-3">
+                {walletData.transactions.map((tx: WalletTx) => {
+                  const isCredit = tx.type.includes('credit');
+                  return (
+                    <div key={tx.id} className="p-4 sm:p-5 flex items-center justify-between hover:bg-[#F8FAFC] transition-colors">
+                      <div className="space-y-0.5">
+                        <div className="text-xs font-semibold text-[#0F172A] flex items-center gap-2">
+                          <span>{tx.description}</span>
+                          <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
+                            isCredit ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                          }`}>
+                            {isCredit ? 'Credit' : 'Payout'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-[#64748B] font-mono">
+                          {new Date(tx.createdAt || tx.created_at || 0).toLocaleString()} • Ref #{tx.id.substring(0, 10)}
+                        </div>
+                      </div>
+                      <div className="text-right font-mono">
+                        <div
+                          className={`text-sm font-extrabold ${
+                            isCredit ? 'text-emerald-600' : 'text-red-600'
+                          }`}
+                        >
+                          {isCredit ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </div>
+                        {typeof tx.balance_after === 'number' && (
+                          <div className="text-[10px] text-[#64748B]">
+                            Balance: ₹{tx.balance_after.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
-              <div className="p-12 text-center text-xs text-[#64748B] font-mono">
-                No withdrawal transactions yet. Once approved, payouts settle directly via bank rails.
+              <div className="p-12 text-center text-xs text-[#64748B] font-mono border border-dashed border-[#DCE7F6] rounded-2xl">
+                No ledger transactions found for the selected {datePreset === 'all' ? 'period' : `${datePreset} filter`}.
               </div>
             )}
           </div>

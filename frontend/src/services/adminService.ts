@@ -1,5 +1,5 @@
 import { request } from './api';
-import type { Video, AdminUserAuditItem, AdminKYCItem, PlatformSettings, Category, SupportThread, SupportMessage } from '../types';
+import type { Video, AdminUserAuditItem, AdminKYCItem, PlatformSettings, Category, SupportThread, SupportMessage, CustomPushRequest, PushJobHistoryItem } from '../types';
 
 const API_HOST = 'https://entertainment.aurapictures.online';
 
@@ -128,13 +128,22 @@ export const adminService = {
       method: 'DELETE'
     }),
 
-  fetchKYCList: () =>
-    request<AdminKYCItem[]>('/admin/kyc'),
+  fetchKYCList: (status?: string) =>
+    request<AdminKYCItem[]>(`/admin/kyc${status ? `?status=${status}` : ''}`),
 
-  verifyKYC: (userId: string, approve: boolean) =>
+  verifyKYC: (userId: string, approve: boolean, rejectionReason?: string) =>
     request<any>(`/admin/kyc/${userId}/verify`, {
       method: 'PUT',
-      body: JSON.stringify({ approve })
+      body: JSON.stringify({ approve, rejection_reason: rejectionReason })
+    }),
+
+  fetchPayouts: (status?: string) =>
+    request<any[]>(`/admin/payouts${status ? `?status=${status}` : ''}`),
+
+  settlePayout: (payoutId: string, action: 'mark_processed' | 'reject', utrNumber?: string, reason?: string) =>
+    request<any>(`/admin/payouts/${payoutId}/settle`, {
+      method: 'PUT',
+      body: JSON.stringify({ action, utr_number: utrNumber, reason })
     }),
 
   fetchSettings: () =>
@@ -163,6 +172,28 @@ export const adminService = {
     request<any>(`/admin/support/threads/${threadId}/status`, {
       method: 'PUT',
       body: JSON.stringify({ status })
+    }),
+
+  sendCustomPush: (data: CustomPushRequest) =>
+    request<{ status: string; message: string }>('/push/admin/send', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+
+  fetchPushHistory: () =>
+    request<{ status: string; jobs: PushJobHistoryItem[] }>('/push/admin/history')
+      .then(res => res.jobs || []),
+
+  registerDeviceToken: (token: string, platform: 'web' | 'android' | 'ios' = 'web') =>
+    request<{ status: string; message: string }>('/push/devices', {
+      method: 'POST',
+      body: JSON.stringify({ token, platform })
+    }),
+
+  unregisterDeviceToken: (token: string) =>
+    request<{ status: string; message: string }>('/push/devices', {
+      method: 'DELETE',
+      body: JSON.stringify({ token })
     })
 };
 

@@ -20,6 +20,8 @@ import { AuthRequiredModal, type AuthGateAction } from './components/modals/Auth
 import { videoService } from './services/videoService';
 import { walletService } from './services/walletService';
 import { authService } from './services/authService';
+import { adminService } from './services/adminService';
+import { enableWebPush, disableWebPush } from './push/pushClient';
 import type {
   User,
   Video,
@@ -132,6 +134,16 @@ export function App() {
           setUser((prev) => ({ ...prev, ...freshProfile }));
         }
       }).catch(() => {});
+
+      // Register device for Web Push notifications
+      enableWebPush(
+        async (token, platform) => {
+          await adminService.registerDeviceToken(token, platform);
+        },
+        (payload) => {
+          showToast(`🔔 ${payload.title || 'Alert'}: ${payload.body || ''}`);
+        }
+      );
     }
   }, [user?.id]);
 
@@ -144,9 +156,22 @@ export function App() {
     setIsAuthOpen(false);
     showToast(`Welcome ${authedUser.channelName || authedUser.name}!`);
     loadWalletAndQuotas();
+
+    // Enable push notifications
+    enableWebPush(
+      async (token, platform) => {
+        await adminService.registerDeviceToken(token, platform);
+      },
+      (payload) => {
+        showToast(`🔔 ${payload.title || 'Alert'}: ${payload.body || ''}`);
+      }
+    );
   };
 
   const handleLogout = () => {
+    disableWebPush(async (token) => {
+      await adminService.unregisterDeviceToken(token);
+    });
     authService.logout();
     sessionStorage.removeItem('aura_active_tab');
     setUser(null);

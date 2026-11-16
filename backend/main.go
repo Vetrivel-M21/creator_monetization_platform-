@@ -14,6 +14,7 @@ import (
 	"creator-monetization-backend/logger"
 	"creator-monetization-backend/middleware"
 	"creator-monetization-backend/services/playback"
+	"creator-monetization-backend/services/push"
 	"creator-monetization-backend/services/transcode"
 
 	"github.com/go-chi/chi/v5"
@@ -36,6 +37,17 @@ func main() {
 	if err := transcode.InitTranscoder(); err != nil {
 		log.Printf("[CreatorPlatform] Warning: Transcoder initialization: %v", err)
 	}
+
+	// 2.2 Initialize Push Notification Service (Failure-Isolated)
+	pushRepo := push.NewRepository(db)
+	pushEnabled := os.Getenv("PUSH_ENABLED") == "true"
+	credsFile := os.Getenv("FIREBASE_CREDENTIALS_FILE")
+	if credsFile == "" {
+		credsFile = "secrets/serviceAccountKey.json"
+	}
+	pushSvc := push.New(context.Background(), db, pushRepo, pushEnabled, credsFile)
+	handlers.PushSvc = pushSvc
+	pushHandler := push.NewHandler(pushSvc, pushRepo)
 
 	// 3. Router & Global Middleware Stack
 	r := chi.NewRouter()
@@ -92,6 +104,9 @@ func main() {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"status":"healthy","database":"` + database.DriverName + `","version":"2.0.0"}`))
 		})
+
+		// Push Notifications Subsystem (FCM)
+		pushHandler.RegisterRoutes(r)
 
 		// Public Auth
 		r.Post("/auth/login", handlers.Login)
@@ -169,6 +184,8 @@ func main() {
 			r.Delete("/categories/{id}", handlers.AdminDeleteCategory)
 			r.Get("/kyc", handlers.AdminListKYC)
 			r.Put("/kyc/{id}/verify", handlers.AdminVerifyKYC)
+			r.Get("/payouts", handlers.AdminListPayouts)
+			r.Put("/payouts/{id}/settle", handlers.AdminSettlePayout)
 			r.Get("/settings", handlers.GetPlatformSettings)
 			r.Put("/settings", handlers.UpdatePlatformSettings)
 		})

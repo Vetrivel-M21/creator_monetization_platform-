@@ -124,6 +124,20 @@ class ApiService {
     return fetchVideos(videoType: 'short');
   }
 
+  Future<VideoModel?> fetchVideoById(String id) async {
+    try {
+      final uri = Uri.parse('$baseUrl/videos?id=$id&status=all');
+      final res = await http.get(uri).timeout(ApiConstants.requestTimeout);
+      if (res.statusCode == 200) {
+        final List data = jsonDecode(res.body);
+        if (data.isNotEmpty) {
+          return VideoModel.fromJson(data.first);
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   /// Obtains a short-lived signed playback ticket with absolute HLS stream URL bound to videoId
   Future<Map<String, dynamic>?> fetchPlaybackTicket(String videoId, {String? token}) async {
     try {
@@ -511,11 +525,17 @@ class ApiService {
     return null;
   }
 
-  Future<Map<String, dynamic>?> fetchWallet(String token, String userId) async {
+  Future<Map<String, dynamic>?> fetchWallet(String token, String userId, {String? from, String? to, String? type}) async {
     try {
-      final res = await http
-          .get(Uri.parse('$baseUrl/wallet/$userId'), headers: _headers(token))
-          .timeout(ApiConstants.requestTimeout);
+      final queryParams = <String, String>{};
+      if (from != null && from.isNotEmpty) queryParams['from'] = from;
+      if (to != null && to.isNotEmpty) queryParams['to'] = to;
+      if (type != null && type.isNotEmpty) queryParams['type'] = type;
+
+      final uri = Uri.parse('$baseUrl/wallet/$userId').replace(
+        queryParameters: queryParams.isEmpty ? null : queryParams,
+      );
+      final res = await http.get(uri, headers: _headers(token)).timeout(ApiConstants.requestTimeout);
       _checkUnauthorized(res.statusCode, token);
       if (res.statusCode == 200) {
         return jsonDecode(res.body) as Map<String, dynamic>;
@@ -555,13 +575,19 @@ class ApiService {
     }
   }
 
-  Future<CreatorStudioModel> fetchCreatorStudio([String? token, UserModel? user]) async {
+  Future<CreatorStudioModel> fetchCreatorStudio([
+    String? token,
+    UserModel? user,
+    String? from,
+    String? to,
+    String? type,
+  ]) async {
     if (token != null && token.isNotEmpty && user != null) {
       try {
         final results = await Future.wait([
           fetchEligibility(token, user.id),
           fetchKyc(token),
-          fetchWallet(token, user.id),
+          fetchWallet(token, user.id, from: from, to: to, type: type),
         ]);
 
         final eligibility = results[0];
@@ -696,8 +722,38 @@ class ApiService {
   }
 
   Future<List<VideoModel>> fetchHomeVideos() => fetchLandscapeVideos();
-  Future<CreatorStudioModel> fetchStudioData([String? token, UserModel? user]) =>
-      fetchCreatorStudio(token, user);
+  Future<CreatorStudioModel> fetchStudioData([
+    String? token,
+    UserModel? user,
+    String? from,
+    String? to,
+    String? type,
+  ]) =>
+      fetchCreatorStudio(token, user, from, to, type);
+
+  Future<void> registerPushDevice(String fcmToken, String platform, [String? token]) async {
+    try {
+      await http
+          .post(
+            Uri.parse('$baseUrl/push/devices'),
+            headers: _headers(token),
+            body: jsonEncode({'token': fcmToken, 'platform': platform}),
+          )
+          .timeout(ApiConstants.requestTimeout);
+    } catch (_) {}
+  }
+
+  Future<void> unregisterPushDevice(String fcmToken, [String? token]) async {
+    try {
+      await http
+          .delete(
+            Uri.parse('$baseUrl/push/devices'),
+            headers: _headers(token),
+            body: jsonEncode({'token': fcmToken}),
+          )
+          .timeout(ApiConstants.requestTimeout);
+    } catch (_) {}
+  }
 
   /// Minimal offline demo videos only used if an explicit demo is triggered
   static List<VideoModel> getOfflineDemoVideos() {

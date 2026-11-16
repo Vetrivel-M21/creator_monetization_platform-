@@ -216,6 +216,48 @@ func createTables(driver string) error {
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+		CREATE TABLE IF NOT EXISTS push_device_tokens (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			user_id VARCHAR(64) NOT NULL,
+			token VARCHAR(512) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+			platform ENUM('android','ios','web') NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			UNIQUE KEY uq_push_token (token),
+			KEY idx_push_tokens_user (user_id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+		CREATE TABLE IF NOT EXISTS push_jobs (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			dedupe_key VARCHAR(128) NULL,
+			kind VARCHAR(32) NOT NULL,
+			target_id VARCHAR(64) NOT NULL DEFAULT '',
+			target_filter VARCHAR(64) NULL,
+			payload TEXT NOT NULL,
+			status VARCHAR(32) NOT NULL DEFAULT 'pending',
+			attempts INT UNSIGNED NOT NULL DEFAULT 0,
+			cursor_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			sent_count INT UNSIGNED NOT NULL DEFAULT 0,
+			failed_count INT UNSIGNED NOT NULL DEFAULT 0,
+			last_error VARCHAR(500) NULL,
+			claim_token CHAR(32) NULL,
+			locked_at DATETIME NULL DEFAULT NULL,
+			next_attempt_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			UNIQUE KEY uq_push_dedupe (dedupe_key),
+			KEY idx_push_jobs_pick (status, next_attempt_at)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+		CREATE TABLE IF NOT EXISTS push_subscriptions (
+			user_id VARCHAR(64) NOT NULL,
+			channel_id VARCHAR(64) NOT NULL,
+			muted TINYINT(1) NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (channel_id, user_id),
+			KEY idx_push_sub_user (user_id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 		`
 	} else {
 		schema = `
@@ -324,6 +366,43 @@ func createTables(driver string) error {
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		);
+
+		CREATE TABLE IF NOT EXISTS push_device_tokens (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id TEXT NOT NULL,
+			token TEXT UNIQUE NOT NULL,
+			platform TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+
+		CREATE TABLE IF NOT EXISTS push_jobs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			dedupe_key TEXT UNIQUE,
+			kind TEXT NOT NULL,
+			target_id TEXT NOT NULL DEFAULT '',
+			target_filter TEXT,
+			payload TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending',
+			attempts INTEGER NOT NULL DEFAULT 0,
+			cursor_id INTEGER NOT NULL DEFAULT 0,
+			sent_count INTEGER NOT NULL DEFAULT 0,
+			failed_count INTEGER NOT NULL DEFAULT 0,
+			last_error TEXT,
+			claim_token TEXT,
+			locked_at DATETIME,
+			next_attempt_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+
+		CREATE TABLE IF NOT EXISTS push_subscriptions (
+			user_id TEXT NOT NULL,
+			channel_id TEXT NOT NULL,
+			muted INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (channel_id, user_id)
+		);
 		`
 	}
 
@@ -404,6 +483,16 @@ func createTables(driver string) error {
 			FOREIGN KEY(thread_id) REFERENCES support_threads(id) ON DELETE CASCADE
 		);
 	`)
+
+	// Auto-migrate user_kyc table for rejection reason, reviewer and timestamps
+	_, _ = DB.Exec("ALTER TABLE user_kyc ADD COLUMN rejection_reason TEXT")
+	_, _ = DB.Exec("ALTER TABLE user_kyc ADD COLUMN reviewed_by VARCHAR(64)")
+	_, _ = DB.Exec("ALTER TABLE user_kyc ADD COLUMN updated_at DATETIME")
+
+	// Auto-migrate payout_requests table for settlement UTR, failure reason and admin processor
+	_, _ = DB.Exec("ALTER TABLE payout_requests ADD COLUMN utr_number VARCHAR(64)")
+	_, _ = DB.Exec("ALTER TABLE payout_requests ADD COLUMN failure_reason TEXT")
+	_, _ = DB.Exec("ALTER TABLE payout_requests ADD COLUMN processed_by VARCHAR(64)")
 
 	seedCategories()
 	seedInitialData(driver)

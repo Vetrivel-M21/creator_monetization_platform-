@@ -9,6 +9,10 @@
 *.env
 !*.env.example
 !*.env.production.example
+*serviceAccountKey*.json
+backend/secrets/*
+!backend/secrets/.gitkeep
+!backend/secrets/serviceAccountKey.json.example
 
 # Compiled Binaries & Executables
 *.exe

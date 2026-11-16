@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "171036833667",
+    "project_id": "creator-monetization-platform",
+    "storage_bucket": "creator-monetization-platform.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:171036833667:android:6e16714c6e1884d599e8b6",
+        "android_client_info": {
+          "package_name": "com.armss.creator_monetization_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC-52OvmOh8KQqD-UcK6WJPvGqdTQOeMow"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

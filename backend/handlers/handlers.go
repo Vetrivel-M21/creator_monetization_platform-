@@ -22,10 +22,13 @@ import (
 	"creator-monetization-backend/models"
 	emailService "creator-monetization-backend/services/email"
 	"creator-monetization-backend/services/playback"
+	"creator-monetization-backend/services/push"
 
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
 )
+
+var PushSvc *push.Service
 
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
@@ -569,6 +572,12 @@ func ListVideos(w http.ResponseWriter, r *http.Request) {
 		WHERE 1=1
 	`
 	var args []interface{}
+
+	videoID := r.URL.Query().Get("id")
+	if videoID != "" {
+		query += " AND id = ?"
+		args = append(args, videoID)
+	}
 
 	if creatorID != "" {
 		query += " AND user_id = ?"
@@ -1513,12 +1522,12 @@ func AdminVerifyVideo(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
-	var currentStatus, creatorID, title, tier string
+	var currentStatus, creatorID, title, tier, thumbURL string
 	var durationMins, currentEarned float64
 	err := database.DB.QueryRowContext(r.Context(), `
-		SELECT status, user_id, title, creator_tier, duration_minutes, total_earned 
+		SELECT status, user_id, title, creator_tier, duration_minutes, total_earned, COALESCE(thumbnail_url, '') 
 		FROM videos WHERE id = ?
-	`, videoID).Scan(&currentStatus, &creatorID, &title, &tier, &durationMins, &currentEarned)
+	`, videoID).Scan(&currentStatus, &creatorID, &title, &tier, &durationMins, &currentEarned, &thumbURL)
 
 	if err != nil {
 		http.Error(w, `{"error":"video not found"}`, http.StatusNotFound)
@@ -1552,6 +1561,53 @@ func AdminVerifyVideo(w http.ResponseWriter, r *http.Request) {
 		}
 		if !milestoneAwarded {
 			milestoneAwarded, milestoneAmount, milestoneMsg, _ = EvaluateAndAwardDiamondReward(r.Context(), creatorID)
+		}
+	}
+
+	// Trigger Push Notifications
+	if PushSvc != nil {
+		if req.Action == "approve" {
+			// 1. Notify Creator of Approval
+			PushSvc.NotifyUser(creatorID, push.Payload{
+				Title:    "✅ Video Approved & Live!",
+				Body:     fmt.Sprintf("Congratulations! '%s' was approved and is now public.", title),
+				ImageURL: thumbURL,
+				Data: map[string]string{
+					"screen": "studio_video",
+					"id":     videoID,
+				},
+			})
+
+			// 2. Notify Channel Subscribers
+			var channelName string
+			_ = database.DB.QueryRowContext(r.Context(), "SELECT COALESCE(channel_name, name) FROM users WHERE id = ?", creatorID).Scan(&channelName)
+			if channelName == "" {
+				channelName = "Creator"
+			}
+			PushSvc.NotifyChannelSubscribers(creatorID, push.Payload{
+				Title:    fmt.Sprintf("🔔 New Video from %s", channelName),
+				Body:     fmt.Sprintf("'%s' is now streaming!", title),
+				ImageURL: thumbURL,
+				Data: map[string]string{
+					"screen": "video",
+					"id":     videoID,
+				},
+			}, "video:"+videoID)
+		} else if req.Action == "reject" {
+			// Notify Creator of Rejection with reason
+			reason := strings.TrimSpace(req.Reason)
+			if reason == "" {
+				reason = "Does not meet community guidelines."
+			}
+			PushSvc.NotifyUser(creatorID, push.Payload{
+				Title:    "⚠️ Video Review Update",
+				Body:     fmt.Sprintf("'%s' was not approved. Reason: %s", title, reason),
+				ImageURL: thumbURL,
+				Data: map[string]string{
+					"screen": "studio_video",
+					"id":     videoID,
+				},
+			})
 		}
 	}
 
@@ -2160,14 +2216,87 @@ func GetWallet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, _ := database.DB.QueryContext(r.Context(), "SELECT id, user_id, amount, type, description, balance_after, created_at FROM wallet_transactions WHERE user_id = ? ORDER BY created_at DESC", userID)
-	defer rows.Close()
+	fromParam := strings.TrimSpace(r.URL.Query().Get("from"))
+	toParam := strings.TrimSpace(r.URL.Query().Get("to"))
+	typeFilter := strings.TrimSpace(r.URL.Query().Get("type"))
 
+	// 1. Lifetime Earnings & Pending Balances
+	var lifetimeEarnings float64
+	_ = database.DB.QueryRowContext(r.Context(), "SELECT COALESCE(SUM(amount), 0) FROM wallet_transactions WHERE user_id = ? AND type LIKE 'credit%'", userID).Scan(&lifetimeEarnings)
+
+	var pendingWithdrawals float64
+	_ = database.DB.QueryRowContext(r.Context(), "SELECT COALESCE(SUM(amount), 0) FROM payout_requests WHERE user_id = ? AND status IN ('pending', 'processing')", userID).Scan(&pendingWithdrawals)
+
+	// Stream Breakdown
+	var milestoneRewards, videoRoyalties, welcomeBonus float64
+	_ = database.DB.QueryRowContext(r.Context(), "SELECT COALESCE(SUM(amount), 0) FROM wallet_transactions WHERE user_id = ? AND type LIKE '%milestone%'", userID).Scan(&milestoneRewards)
+	_ = database.DB.QueryRowContext(r.Context(), "SELECT COALESCE(SUM(amount), 0) FROM wallet_transactions WHERE user_id = ? AND type LIKE '%video%'", userID).Scan(&videoRoyalties)
+	_ = database.DB.QueryRowContext(r.Context(), "SELECT COALESCE(SUM(amount), 0) FROM wallet_transactions WHERE user_id = ? AND type LIKE '%welcome%'", userID).Scan(&welcomeBonus)
+
+	// KYC status check
+	var isKYCVerified bool
+	var kycBank, kycAccount string
+	_ = database.DB.QueryRowContext(r.Context(), `
+		SELECT is_verified, COALESCE(bank_name, ''), COALESCE(bank_account, '')
+		FROM user_kyc WHERE user_id = ?
+	`, userID).Scan(&isKYCVerified, &kycBank, &kycAccount)
+	if len(kycAccount) > 4 {
+		kycAccount = strings.Repeat("*", len(kycAccount)-4) + kycAccount[len(kycAccount)-4:]
+	}
+
+	// 2. Build Filtered Query for Transactions and Period Sums
+	txQuery := "SELECT id, user_id, amount, type, description, balance_after, created_at FROM wallet_transactions WHERE user_id = ?"
+	periodCreditQuery := "SELECT COALESCE(SUM(amount), 0) FROM wallet_transactions WHERE user_id = ? AND type LIKE 'credit%'"
+	periodDebitQuery := "SELECT COALESCE(SUM(amount), 0) FROM wallet_transactions WHERE user_id = ? AND type LIKE 'debit%'"
+
+	txArgs := []interface{}{userID}
+	periodArgs := []interface{}{userID}
+
+	if fromParam != "" {
+		txQuery += " AND created_at >= ?"
+		periodCreditQuery += " AND created_at >= ?"
+		periodDebitQuery += " AND created_at >= ?"
+		// If only date is provided (YYYY-MM-DD), append start of day
+		if len(fromParam) == 10 {
+			fromParam += " 00:00:00"
+		}
+		txArgs = append(txArgs, fromParam)
+		periodArgs = append(periodArgs, fromParam)
+	}
+
+	if toParam != "" {
+		txQuery += " AND created_at <= ?"
+		periodCreditQuery += " AND created_at <= ?"
+		periodDebitQuery += " AND created_at <= ?"
+		// If only date is provided (YYYY-MM-DD), append end of day
+		if len(toParam) == 10 {
+			toParam += " 23:59:59"
+		}
+		txArgs = append(txArgs, toParam)
+		periodArgs = append(periodArgs, toParam)
+	}
+
+	var periodEarnings, periodWithdrawals float64
+	_ = database.DB.QueryRowContext(r.Context(), periodCreditQuery, periodArgs...).Scan(&periodEarnings)
+	_ = database.DB.QueryRowContext(r.Context(), periodDebitQuery, periodArgs...).Scan(&periodWithdrawals)
+
+	if typeFilter == "credit" {
+		txQuery += " AND type LIKE 'credit%'"
+	} else if typeFilter == "debit" {
+		txQuery += " AND type LIKE 'debit%'"
+	}
+
+	txQuery += " ORDER BY created_at DESC LIMIT 100"
+
+	rows, err := database.DB.QueryContext(r.Context(), txQuery, txArgs...)
 	var txs []models.WalletTransaction
-	for rows.Next() {
-		var tx models.WalletTransaction
-		if err := rows.Scan(&tx.ID, &tx.UserID, &tx.Amount, &tx.Type, &tx.Description, &tx.BalanceAfter, &tx.CreatedAt); err == nil {
-			txs = append(txs, tx)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var tx models.WalletTransaction
+			if scanErr := rows.Scan(&tx.ID, &tx.UserID, &tx.Amount, &tx.Type, &tx.Description, &tx.BalanceAfter, &tx.CreatedAt); scanErr == nil {
+				txs = append(txs, tx)
+			}
 		}
 	}
 	if txs == nil {
@@ -2175,8 +2304,26 @@ func GetWallet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
-		"user_id":      userID,
-		"balance":      balance,
+		"user_id":                 userID,
+		"balance":                 balance,
+		"available_balance":       balance,
+		"total_lifetime_earnings": lifetimeEarnings,
+		"pending_withdrawals":     pendingWithdrawals,
+		"period_earnings":         periodEarnings,
+		"period_withdrawals":      periodWithdrawals,
+		"kyc_verified":            isKYCVerified,
+		"kyc_bank":                kycBank,
+		"kyc_account":             kycAccount,
+		"breakdown": map[string]interface{}{
+			"milestone_rewards": milestoneRewards,
+			"video_royalties":   videoRoyalties,
+			"welcome_bonus":     welcomeBonus,
+		},
+		"filter": map[string]interface{}{
+			"from": fromParam,
+			"to":   toParam,
+			"type": typeFilter,
+		},
 		"transactions": txs,
 	})
 }

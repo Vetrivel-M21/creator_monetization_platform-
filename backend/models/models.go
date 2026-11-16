@@ -75,6 +75,9 @@ type UserKYC struct {
 	AgreementAgreed bool       `json:"agreement_agreed"`
 	IsVerified      bool       `json:"is_verified"`
 	VerifiedAt      *time.Time `json:"verified_at,omitempty"`
+	RejectionReason string     `json:"rejection_reason,omitempty"`
+	ReviewedBy      string     `json:"reviewed_by,omitempty"`
+	UpdatedAt       *time.Time `json:"updated_at,omitempty"`
 }
 
 type Video struct {
@@ -134,6 +137,9 @@ type PayoutRequest struct {
 	BeneficiaryName string    `json:"beneficiary_name"`
 	BankAccount     string    `json:"bank_account"`
 	IFSC            string    `json:"ifsc"`
+	UTRNumber       string    `json:"utr_number,omitempty"`
+	FailureReason   string    `json:"failure_reason,omitempty"`
+	ProcessedBy     string    `json:"processed_by,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }

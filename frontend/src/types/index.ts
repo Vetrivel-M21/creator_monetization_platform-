@@ -102,6 +102,38 @@ export interface SupportMessage {
   created_at: string;
 }
 
+export interface CustomPushRequest {
+  title: string;
+  body: string;
+  image_url?: string;
+  target_audience: 'all' | 'admins' | 'tier:silver' | 'tier:gold' | 'tier:diamond' | 'user';
+  target_user_id?: string;
+  target_screen?: string;
+  target_id?: string;
+}
+
+export interface PushJobHistoryItem {
+  id: number;
+  dedupe_key?: string;
+  kind: 'user' | 'channel' | 'admin' | 'broadcast';
+  target_id: string;
+  target_filter?: string;
+  payload: {
+    title: string;
+    body: string;
+    image_url?: string;
+    data?: Record<string, string>;
+  };
+  status: 'pending' | 'processing' | 'done' | 'failed';
+  attempts: number;
+  cursor_id: number;
+  sent_count: number;
+  failed_count: number;
+  last_error?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface UserKYC {
   user_id: string;
   aadhaar_number: string;
@@ -113,6 +145,9 @@ export interface UserKYC {
   agreement_agreed: boolean;
   is_verified: boolean;
   verified_at?: string;
+  rejection_reason?: string;
+  reviewed_by?: string;
+  updated_at?: string;
 }
 
 export interface AdminKYCItem {
@@ -121,6 +156,7 @@ export interface AdminKYCItem {
   email: string;
   mobile: string;
   tier: string;
+  channel_name?: string;
   aadhaar_number: string;
   pan_number: string;
   bank_account: string;
@@ -129,6 +165,30 @@ export interface AdminKYCItem {
   account_holder: string;
   is_verified: boolean;
   verified_at?: string;
+  rejection_reason?: string;
+  reviewed_by?: string;
+  updated_at?: string;
+}
+
+export interface AdminPayoutItem {
+  id: string;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  user_mobile: string;
+  channel_name: string;
+  amount: number;
+  status: 'pending' | 'processing' | 'processed' | 'failed';
+  cf_transfer_id?: string;
+  cf_reference_id?: string;
+  beneficiary_name: string;
+  bank_account: string;
+  ifsc: string;
+  utr_number?: string;
+  failure_reason?: string;
+  processed_by?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Video {
@@ -189,6 +249,22 @@ export interface WalletBalance {
   welcomeCredit: number;
   approvedEarnings: number;
   kycVerified: boolean;
+  kycBank?: string;
+  kycAccount?: string;
+  totalLifetimeEarnings?: number;
+  periodEarnings?: number;
+  periodWithdrawals?: number;
+  pendingWithdrawals?: number;
+  breakdown?: {
+    milestone_rewards: number;
+    video_royalties: number;
+    welcome_bonus: number;
+  };
+  filter?: {
+    from?: string;
+    to?: string;
+    type?: string;
+  };
   transactions: WalletTx[];
 }
 

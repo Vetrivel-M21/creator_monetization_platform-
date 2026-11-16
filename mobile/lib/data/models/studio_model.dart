@@ -77,6 +77,8 @@ class CreatorStudioModel {
   final double welcomeCredit;
   final String tier;
   final bool isKycVerified;
+  final bool isKycSubmitted;
+  final String kycRejectionReason;
   final String kycHolderName;
   final String kycAadhaar;
   final String kycPan;
@@ -85,6 +87,10 @@ class CreatorStudioModel {
   final String kycIfsc;
   final bool silverRewardPaid;
   final int totalApprovedVideos;
+  final double totalLifetimeEarnings;
+  final double periodEarnings;
+  final double periodWithdrawals;
+  final double pendingWithdrawals;
   final List<DurationQuotaItem> buckets;
   final List<StudioTransaction> transactions;
 
@@ -100,6 +106,8 @@ class CreatorStudioModel {
     required this.welcomeCredit,
     required this.tier,
     required this.isKycVerified,
+    this.isKycSubmitted = false,
+    this.kycRejectionReason = '',
     this.kycHolderName = '',
     this.kycAadhaar = '',
     this.kycPan = '',
@@ -108,6 +116,10 @@ class CreatorStudioModel {
     this.kycIfsc = '',
     required this.silverRewardPaid,
     required this.totalApprovedVideos,
+    this.totalLifetimeEarnings = 0.0,
+    this.periodEarnings = 0.0,
+    this.periodWithdrawals = 0.0,
+    this.pendingWithdrawals = 0.0,
     required this.buckets,
     required this.transactions,
   });
@@ -169,7 +181,9 @@ class CreatorStudioModel {
 
     // Parse KYC details
     final kycMap = kycData != null && kycData['kyc'] is Map ? kycData['kyc'] as Map : null;
+    final isSubmitted = kycData != null && kycData['submitted'] == true;
     final isVerified = kycMap != null && (kycMap['is_verified'] == true || kycMap['is_verified'] == 1);
+    final rejectionReason = kycMap?['rejection_reason']?.toString() ?? '';
     final holderName = kycMap?['account_holder']?.toString() ?? user.name;
     final aadhaar = kycMap?['aadhaar_number']?.toString() ?? '';
     final pan = kycMap?['pan_number']?.toString() ?? '';
@@ -179,6 +193,10 @@ class CreatorStudioModel {
 
     final totalVideos = (eligibility?['total_videos'] as num?)?.toInt() ?? 0;
     final balance = (walletData?['balance'] as num?)?.toDouble() ?? user.walletAmount;
+    final totalLifetime = (walletData?['total_lifetime_earnings'] as num?)?.toDouble() ?? balance;
+    final periodEarn = (walletData?['period_earnings'] as num?)?.toDouble() ?? balance;
+    final periodDebit = (walletData?['period_withdrawals'] as num?)?.toDouble() ?? 0.0;
+    final pendingDebit = (walletData?['pending_withdrawals'] as num?)?.toDouble() ?? 0.0;
 
     return CreatorStudioModel(
       channelName: user.channelName.isNotEmpty ? user.channelName : user.name,
@@ -192,6 +210,8 @@ class CreatorStudioModel {
       welcomeCredit: 0.0,
       tier: user.tier.isNotEmpty ? '${user.tier[0].toUpperCase()}${user.tier.substring(1)}' : 'Silver',
       isKycVerified: isVerified,
+      isKycSubmitted: isSubmitted,
+      kycRejectionReason: rejectionReason,
       kycHolderName: holderName,
       kycAadhaar: aadhaar,
       kycPan: pan,
@@ -201,6 +221,10 @@ class CreatorStudioModel {
       silverRewardPaid: (eligibility?['total_earned'] as num?)?.toDouble() != null &&
           (eligibility!['total_earned'] as num).toDouble() >= 2500,
       totalApprovedVideos: totalVideos,
+      totalLifetimeEarnings: totalLifetime,
+      periodEarnings: periodEarn,
+      periodWithdrawals: periodDebit,
+      pendingWithdrawals: pendingDebit,
       buckets: parsedBuckets,
       transactions: parsedTransactions,
     );
@@ -219,6 +243,8 @@ class CreatorStudioModel {
       welcomeCredit: 0.0,
       tier: user?.tier.isNotEmpty == true ? '${user!.tier[0].toUpperCase()}${user.tier.substring(1)}' : 'Silver',
       isKycVerified: false,
+      isKycSubmitted: false,
+      kycRejectionReason: '',
       kycHolderName: user?.name ?? '',
       kycAadhaar: '',
       kycPan: '',
@@ -227,6 +253,10 @@ class CreatorStudioModel {
       kycIfsc: '',
       silverRewardPaid: false,
       totalApprovedVideos: 0,
+      totalLifetimeEarnings: user?.walletAmount ?? 0.0,
+      periodEarnings: user?.walletAmount ?? 0.0,
+      periodWithdrawals: 0.0,
+      pendingWithdrawals: 0.0,
       buckets: [
         DurationQuotaItem(key: '30m', label: '30+ Min Videos', current: 0, max: 10, ratePerVideo: 80.0),
         DurationQuotaItem(key: '20m', label: '20-29 Min Videos', current: 0, max: 10, ratePerVideo: 60.0),

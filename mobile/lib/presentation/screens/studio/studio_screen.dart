@@ -29,14 +29,47 @@ class _StudioScreenState extends State<StudioScreen> {
     _loadStudio();
   }
 
-  void _loadStudio() {
+  String _activeDateFilter = 'all';
+
+  void _loadStudio([String? from, String? to, String? type]) {
     final auth = AuthService.instance;
-    _studioFuture = _apiService.fetchStudioData(auth.token, auth.currentUser);
+    _studioFuture = _apiService.fetchStudioData(
+      auth.token,
+      auth.currentUser,
+      from,
+      to,
+      type,
+    );
     if (auth.isLoggedIn && auth.currentUser != null) {
       _myVideosFuture = _apiService.fetchMyUploadedVideos(auth.token!, auth.currentUser!.id);
     } else {
       _myVideosFuture = Future.value(<VideoModel>[]);
     }
+  }
+
+  void _onDateFilterChanged(String preset) {
+    setState(() {
+      _activeDateFilter = preset;
+    });
+    final now = DateTime.now();
+    String? from;
+    String? to;
+
+    if (preset == 'today') {
+      from = now.toIso8601String().split('T').first;
+      to = from;
+    } else if (preset == '7d') {
+      from = now.subtract(const Duration(days: 7)).toIso8601String().split('T').first;
+      to = now.toIso8601String().split('T').first;
+    } else if (preset == 'this_month') {
+      from = '${now.year}-${now.month.toString().padLeft(2, '0')}-01';
+      to = now.toIso8601String().split('T').first;
+    } else if (preset == '30d') {
+      from = now.subtract(const Duration(days: 30)).toIso8601String().split('T').first;
+      to = now.toIso8601String().split('T').first;
+    }
+
+    _loadStudio(from, to);
   }
 
   Future<void> _navigateToUpload() async {
@@ -316,9 +349,52 @@ class _StudioScreenState extends State<StudioScreen> {
               _buildKycRow('Legal Name', studio.kycHolderName.isNotEmpty ? studio.kycHolderName : studio.creatorName),
               _buildKycRow(
                 'KYC Status',
-                studio.isKycVerified ? 'Verified & Approved' : 'Pending Verification',
+                studio.isKycVerified
+                    ? 'Verified & Approved'
+                    : studio.kycRejectionReason.isNotEmpty
+                        ? 'Rejected / Action Needed'
+                        : 'Pending Verification',
                 isSuccess: studio.isKycVerified,
               ),
+              if (studio.kycRejectionReason.isNotEmpty && !studio.isKycVerified) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEE2E2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFFCA5A5)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded, color: Color(0xFFB91C1C), size: 16),
+                          SizedBox(width: 6),
+                          Text(
+                            'Admin Feedback / Rejection Reason',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                              color: Color(0xFF991B1B),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        studio.kycRejectionReason,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF7F1D1D),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               _buildKycRow(
                 'ID Verification',
                 studio.kycAadhaar.isNotEmpty
@@ -1289,7 +1365,87 @@ class _StudioScreenState extends State<StudioScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Lifetime: ₹${studio.totalLifetimeEarnings.toStringAsFixed(2)}',
+                  style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  'Period: ₹${studio.periodEarnings.toStringAsFixed(2)}',
+                  style: const TextStyle(color: Color(0xFF93C5FD), fontSize: 11.5, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          // KYC status notice
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: studio.isKycVerified
+                  ? const Color(0xFF065F46).withValues(alpha: 0.3)
+                  : studio.kycRejectionReason.isNotEmpty
+                      ? const Color(0xFF991B1B).withValues(alpha: 0.3)
+                      : Colors.white.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: studio.isKycVerified
+                    ? const Color(0xFF34D399)
+                    : studio.kycRejectionReason.isNotEmpty
+                        ? const Color(0xFFF87171)
+                        : Colors.white30,
+                width: 0.8,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  studio.isKycVerified
+                      ? Icons.check_circle_rounded
+                      : studio.kycRejectionReason.isNotEmpty
+                          ? Icons.warning_amber_rounded
+                          : Icons.hourglass_top_rounded,
+                  color: studio.isKycVerified
+                      ? const Color(0xFF34D399)
+                      : studio.kycRejectionReason.isNotEmpty
+                          ? const Color(0xFFFCA5A5)
+                          : Colors.white70,
+                  size: 14,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    studio.isKycVerified
+                        ? 'Bank KYC Verified: ${studio.kycBank.isNotEmpty ? studio.kycBank : "Bank"} (•••• ${studio.kycAccount.length > 4 ? studio.kycAccount.substring(studio.kycAccount.length - 4) : studio.kycAccount})'
+                        : studio.kycRejectionReason.isNotEmpty
+                            ? 'KYC Rejected: ${studio.kycRejectionReason}'
+                            : 'Bank KYC Pending Verification',
+                    style: TextStyle(
+                      color: studio.isKycVerified
+                          ? const Color(0xFFA7F3D0)
+                          : studio.kycRejectionReason.isNotEmpty
+                              ? const Color(0xFFFECACA)
+                              : Colors.white70,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
 
           // Payout and KYC Buttons
           Row(
@@ -1652,7 +1808,32 @@ class _StudioScreenState extends State<StudioScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          ListView.separated(
+          // Date Filter Chips
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildDateFilterChip('all', 'All Time'),
+                _buildDateFilterChip('today', 'Today'),
+                _buildDateFilterChip('7d', '7 Days'),
+                _buildDateFilterChip('this_month', 'This Month'),
+                _buildDateFilterChip('30d', '30 Days'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (studio.transactions.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Text(
+                  'No transactions found for ${_activeDateFilter == "all" ? "this account" : _activeDateFilter}.',
+                  style: const TextStyle(fontSize: 12, color: AppColors.mutedText),
+                ),
+              ),
+            )
+          else
+            ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: studio.transactions.length,
@@ -1743,6 +1924,35 @@ class _StudioScreenState extends State<StudioScreen> {
             },
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDateFilterChip(String key, String label) {
+    final isSelected = _activeDateFilter == key;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: InkWell(
+        onTap: () => _onDateFilterChanged(key),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.primaryAccent : const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isSelected ? AppColors.primaryAccent : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: isSelected ? Colors.white : AppColors.mutedText,
+            ),
+          ),
+        ),
       ),
     );
   }

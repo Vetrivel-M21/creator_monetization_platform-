@@ -23,6 +23,9 @@ import {
 } from 'lucide-react';
 import type { Video, AdminUserAuditItem, Category, SupportThread, SupportMessage } from '../types';
 import { adminService } from '../services/adminService';
+import { AdminPushNotificationTab } from './AdminPushNotificationTab';
+import { AdminKYCTab } from './AdminKYCTab';
+import { AdminPayoutsTab } from './AdminPayoutsTab';
 import { formatDuration } from '../utils/formatters';
 
 interface AdminViewProps {
@@ -36,7 +39,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   onModerateSuccess,
   onSelectVideo,
 }) => {
-  const [activeTab, setActiveTab] = useState<'moderation' | 'creators' | 'categories' | 'settings' | 'support'>('moderation');
+  const [activeTab, setActiveTab] = useState<'moderation' | 'creators' | 'categories' | 'kyc' | 'payouts' | 'settings' | 'support' | 'push'>('moderation');
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionType, setActionType] = useState<'success' | 'warning' | 'info'>('info');
@@ -457,6 +460,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
               badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
             },
             { id: 'categories' as const, label: `Categories (${categories.length})` },
+            { id: 'kyc' as const, label: 'KYC Verifications' },
+            { id: 'payouts' as const, label: 'Payouts & Settlements' },
             { id: 'settings' as const, label: 'Monetization Rules' },
             {
               id: 'support' as const,
@@ -464,6 +469,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
               badge: totalUnreadSupport > 0 ? `${totalUnreadSupport} New` : undefined,
               badgeColor: 'bg-blue-100 text-blue-800 border-blue-300',
             },
+            { id: 'push' as const, label: 'Push Notifications' },
           ].map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -1152,6 +1158,21 @@ export const AdminView: React.FC<AdminViewProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {/* Tab 4: KYC Verifications Desk */}
+      {activeTab === 'kyc' && (
+        <AdminKYCTab />
+      )}
+
+      {/* Tab 5: Payouts & Settlements Desk */}
+      {activeTab === 'payouts' && (
+        <AdminPayoutsTab />
+      )}
+
+      {/* Tab 6: Push Notifications Desk */}
+      {activeTab === 'push' && (
+        <AdminPushNotificationTab auditUsers={auditUsers} />
       )}
 
       {/* Category Create / Edit Modal */}

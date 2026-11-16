@@ -11,9 +11,14 @@ import '../../widgets/comments_sheet.dart';
 import '../../widgets/auth_required_dialog.dart';
 
 class VideoDetailScreen extends StatefulWidget {
-  final VideoModel video;
+  final VideoModel? video;
+  final String? videoId;
 
-  const VideoDetailScreen({super.key, required this.video});
+  const VideoDetailScreen({
+    super.key,
+    this.video,
+    this.videoId,
+  }) : assert(video != null || videoId != null, 'Either video or videoId must be provided');
 
   @override
   State<VideoDetailScreen> createState() => _VideoDetailScreenState();
@@ -40,8 +45,16 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _currentVideo = widget.video;
+    if (widget.video != null) {
+      _currentVideo = widget.video!;
+      _bootstrapVideo();
+    } else {
+      _currentVideo = VideoModel.placeholder(widget.videoId!);
+      _fetchVideoAndBootstrap(widget.videoId!);
+    }
+  }
 
+  void _bootstrapVideo() {
     // Restore saved & liked state from LibraryService
     final isSaved = _library.isSaved(_currentVideo.id);
     final isLiked = _library.isLiked(_currentVideo.id);
@@ -51,6 +64,18 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
     _loadRelatedVideos();
     _api.recordView(_currentVideo.id);
     _library.recordHistory(_currentVideo);
+  }
+
+  Future<void> _fetchVideoAndBootstrap(String vid) async {
+    final fetched = await _api.fetchVideoById(vid);
+    if (fetched != null && mounted) {
+      setState(() {
+        _currentVideo = fetched;
+      });
+    }
+    if (mounted) {
+      _bootstrapVideo();
+    }
   }
 
   void _toggleFullscreen() {

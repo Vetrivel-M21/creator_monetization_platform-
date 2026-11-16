@@ -14,6 +14,7 @@ import (
 	"creator-monetization-backend/database"
 	"creator-monetization-backend/middleware"
 	"creator-monetization-backend/models"
+	"creator-monetization-backend/services/push"
 	"creator-monetization-backend/services/transcode"
 )
 
@@ -217,6 +218,19 @@ func UploadVideo(w http.ResponseWriter, r *http.Request) {
 	// Launch background transcoding job (asynchronous ABR ladder generation)
 	if transcode.DefaultTranscoder != nil {
 		transcode.DefaultTranscoder.StartTranscodeJob(videoID)
+	}
+
+	// Trigger Push Notification to platform admins for review
+	if PushSvc != nil {
+		PushSvc.NotifyAdmins(push.Payload{
+			Title:    "🎬 New Video Pending Review",
+			Body:     fmt.Sprintf("%s uploaded '%s' for review.", v.CreatorName, v.Title),
+			ImageURL: v.ThumbnailURL,
+			Data: map[string]string{
+				"screen": "admin_review",
+				"id":     v.ID,
+			},
+		}, "review:"+v.ID)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

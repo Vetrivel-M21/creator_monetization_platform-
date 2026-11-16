@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, ShieldCheck, CheckCircle2, AlertCircle, AlertTriangle } from 'lucide-react';
 import { walletService } from '../../services/walletService';
 
 interface KYCModalProps {
@@ -14,17 +14,45 @@ export const KYCModal: React.FC<KYCModalProps> = ({ isOpen, onClose, onSuccess, 
   const [aadhaarNumber, setAadhaarNumber] = useState('');
   const [bankAccount, setBankAccount] = useState('');
   const [ifscCode, setIfscCode] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [accountHolder, setAccountHolder] = useState('');
+  const [rejectionReason, setRejectionReason] = useState<string | null>(null);
+  const [isVerified, setIsVerified] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  useEffect(() => {
+    if (isOpen) {
+      loadExistingKYC();
+    }
+  }, [isOpen]);
+
+  const loadExistingKYC = async () => {
+    try {
+      const res = await walletService.fetchKYC();
+      if (res && res.kyc) {
+        setPanNumber(res.kyc.pan_number || '');
+        setBankAccount(res.kyc.bank_account || '');
+        setIfscCode(res.kyc.ifsc_code || '');
+        setBankName(res.kyc.bank_name || '');
+        setAccountHolder(res.kyc.account_holder || '');
+        setIsVerified(!!res.kyc.is_verified);
+        setRejectionReason(res.kyc.rejection_reason || null);
+        if (res.kyc.agreement_agreed) setAgreed(true);
+      }
+    } catch {
+      // Ignore if not yet submitted
+    }
+  };
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!panNumber || !aadhaarNumber || !bankAccount || !ifscCode) {
-      setError('Please fill in all banking and identity fields');
+    if (!panNumber || !aadhaarNumber || !bankAccount || !ifscCode || !bankName || !accountHolder) {
+      setError('Please fill in all banking and identity fields.');
       return;
     }
     if (!agreed) {
@@ -36,16 +64,19 @@ export const KYCModal: React.FC<KYCModalProps> = ({ isOpen, onClose, onSuccess, 
       setLoading(true);
       setError(null);
       await walletService.submitKYC({
-        panNumber: panNumber.toUpperCase(),
-        aadhaarNumber,
-        bankAccount,
-        ifscCode: ifscCode.toUpperCase(),
+        pan_number: panNumber.toUpperCase(),
+        aadhaar_number: aadhaarNumber,
+        bank_account: bankAccount,
+        ifsc_code: ifscCode.toUpperCase(),
+        bank_name: bankName,
+        account_holder: accountHolder,
+        agreement_agreed: true,
       });
       setSuccess(true);
       setTimeout(() => {
         onSuccess();
         onClose();
-      }, 1200);
+      }, 1400);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'KYC submission failed';
       setError(msg);
@@ -68,7 +99,7 @@ export const KYCModal: React.FC<KYCModalProps> = ({ isOpen, onClose, onSuccess, 
                 Direct Bank KYC Verification
               </h2>
               <p className="text-[11px] text-[#64748B] font-normal">
-                Link bank account for direct creator royalties settlement
+                Link bank account for direct creator royalties & milestone payouts
               </p>
             </div>
           </div>
@@ -81,7 +112,31 @@ export const KYCModal: React.FC<KYCModalProps> = ({ isOpen, onClose, onSuccess, 
         </div>
 
         {/* Form Body */}
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+          {isVerified && (
+            <div className="flex items-center gap-2.5 p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs">
+              <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+              <span>
+                <strong>Your KYC is Verified!</strong> Bank payouts and milestone bonuses are active. You can update details below if your bank changes.
+              </span>
+            </div>
+          )}
+
+          {rejectionReason && !isVerified && (
+            <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl text-red-800 text-xs space-y-1">
+              <div className="flex items-center gap-2 font-bold text-red-900">
+                <AlertTriangle size={15} className="shrink-0" />
+                <span>Action Needed: Previous Submission Rejected</span>
+              </div>
+              <p className="text-red-700 pl-5">
+                Reason from Admin: <strong className="font-semibold">{rejectionReason}</strong>
+              </p>
+              <p className="text-[11px] text-red-600 pl-5">
+                Please correct the indicated details below and submit for re-verification.
+              </p>
+            </div>
+          )}
+
           {error && (
             <div className="flex items-center gap-2.5 p-3.5 bg-red-50 border border-red-200 rounded-2xl text-red-700 text-xs">
               <AlertCircle size={15} className="shrink-0" />
@@ -92,51 +147,67 @@ export const KYCModal: React.FC<KYCModalProps> = ({ isOpen, onClose, onSuccess, 
           {success && (
             <div className="flex items-center gap-2.5 p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-700 text-xs font-mono">
               <CheckCircle2 size={15} className="shrink-0" />
-              <span>KYC successfully verified! Direct bank payouts enabled.</span>
+              <span>KYC successfully submitted! Our team will verify your details within 24 hours.</span>
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[#0F172A]">
-                Permanent Account Number (PAN) *
-              </label>
-              <input
-                type="text"
-                required
-                maxLength={10}
-                placeholder="ABCDE1234F"
-                value={panNumber}
-                onChange={(e) => setPanNumber(e.target.value.toUpperCase())}
-                className="w-full bg-[#F8FAFC] border border-[#DCE7F6] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] rounded-xl px-4 py-2.5 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none font-mono uppercase tracking-wider"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-[#0F172A]">
+                  Permanent Account Number (PAN) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={10}
+                  placeholder="ABCDE1234F"
+                  value={panNumber}
+                  onChange={(e) => setPanNumber(e.target.value.toUpperCase())}
+                  className="w-full bg-[#F8FAFC] border border-[#DCE7F6] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] rounded-xl px-4 py-2.5 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none font-mono uppercase tracking-wider"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-[#0F172A]">
+                  Aadhaar Number (12 Digits) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={12}
+                  placeholder="12-digit number"
+                  value={aadhaarNumber}
+                  onChange={(e) => setAadhaarNumber(e.target.value.replace(/\D/g, ''))}
+                  className="w-full bg-[#F8FAFC] border border-[#DCE7F6] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] rounded-xl px-4 py-2.5 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none font-mono tracking-wider"
+                />
+              </div>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-[#0F172A]">
-                Aadhaar Identification Number *
+                Account Holder Name (As per Bank Records) *
               </label>
               <input
                 type="text"
                 required
-                maxLength={12}
-                placeholder="XXXX XXXX XXXX"
-                value={aadhaarNumber}
-                onChange={(e) => setAadhaarNumber(e.target.value.replace(/\D/g, ''))}
-                className="w-full bg-[#F8FAFC] border border-[#DCE7F6] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] rounded-xl px-4 py-2.5 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none font-mono tracking-wider"
+                placeholder="Full name matching your bank account"
+                value={accountHolder}
+                onChange={(e) => setAccountHolder(e.target.value)}
+                className="w-full bg-[#F8FAFC] border border-[#DCE7F6] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] rounded-xl px-4 py-2.5 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none"
               />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-[#0F172A]">Bank Account Number *</label>
+                <label className="text-xs font-semibold text-[#0F172A]">Bank Name *</label>
                 <input
                   type="text"
                   required
-                  placeholder="9876543210123"
-                  value={bankAccount}
-                  onChange={(e) => setBankAccount(e.target.value)}
-                  className="w-full bg-[#F8FAFC] border border-[#DCE7F6] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] rounded-xl px-4 py-2.5 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none font-mono"
+                  placeholder="e.g. HDFC Bank, SBI, ICICI"
+                  value={bankName}
+                  onChange={(e) => setBankName(e.target.value)}
+                  className="w-full bg-[#F8FAFC] border border-[#DCE7F6] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] rounded-xl px-4 py-2.5 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none"
                 />
               </div>
 
@@ -145,12 +216,24 @@ export const KYCModal: React.FC<KYCModalProps> = ({ isOpen, onClose, onSuccess, 
                 <input
                   type="text"
                   required
-                  placeholder="HDFC0001234"
+                  placeholder="e.g. HDFC0001234"
                   value={ifscCode}
                   onChange={(e) => setIfscCode(e.target.value.toUpperCase())}
                   className="w-full bg-[#F8FAFC] border border-[#DCE7F6] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] rounded-xl px-4 py-2.5 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none font-mono uppercase tracking-wider"
                 />
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-[#0F172A]">Bank Account Number *</label>
+              <input
+                type="text"
+                required
+                placeholder="Enter 9 to 18-digit bank account number"
+                value={bankAccount}
+                onChange={(e) => setBankAccount(e.target.value)}
+                className="w-full bg-[#F8FAFC] border border-[#DCE7F6] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] rounded-xl px-4 py-2.5 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none font-mono"
+              />
             </div>
 
             <div className="p-4 bg-[#F8FAFC] border border-[#DCE7F6] rounded-2xl">
@@ -190,7 +273,7 @@ export const KYCModal: React.FC<KYCModalProps> = ({ isOpen, onClose, onSuccess, 
                 disabled={loading}
                 className="btn-pill-primary px-5 py-2.5 text-xs font-semibold tracking-tight disabled:opacity-50 cursor-pointer"
               >
-                {loading ? 'Verifying...' : 'Confirm Bank Details'}
+                {loading ? 'Submitting...' : isVerified ? 'Update Bank Details' : 'Submit for Verification'}
               </button>
             </div>
           </form>

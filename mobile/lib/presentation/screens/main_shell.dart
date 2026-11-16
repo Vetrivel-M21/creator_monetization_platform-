@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/services/push_service.dart';
+import '../../data/services/api_service.dart';
 import '../../data/services/auth_service.dart';
 import '../widgets/auth_required_dialog.dart';
 import '../widgets/upload_sheet.dart';
@@ -7,6 +9,7 @@ import 'home/home_screen.dart';
 import 'shorts/shorts_screen.dart';
 import 'subscriptions/subscriptions_screen.dart';
 import 'studio/studio_screen.dart';
+import 'video_detail/video_detail_screen.dart';
 
 class MainShellScreen extends StatefulWidget {
   const MainShellScreen({super.key});
@@ -17,6 +20,40 @@ class MainShellScreen extends StatefulWidget {
 
 class _MainShellScreenState extends State<MainShellScreen> {
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _initPush();
+  }
+
+  void _initPush() {
+    final auth = AuthService.instance;
+    if (!auth.isGuest) {
+      PushService.instance.start(
+        registerToken: (token, platform) async {
+          await ApiService().registerPushDevice(token, platform, auth.token);
+        },
+        onTap: (data) {
+          _handleNotificationTap(data);
+        },
+      );
+    }
+  }
+
+  void _handleNotificationTap(Map<String, dynamic> data) {
+    final screen = data['screen'];
+    final id = data['id'];
+    if (screen == 'video' && id != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => VideoDetailScreen(videoId: id.toString(), ),
+        ),
+      );
+    } else if (screen == 'studio_video' || screen == 'studio') {
+      setState(() => _currentIndex = 4);
+    }
+  }
 
   Future<void> _triggerUploadFlow() async {
     final auth = AuthService.instance;

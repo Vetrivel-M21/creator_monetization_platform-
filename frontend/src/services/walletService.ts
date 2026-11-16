@@ -2,18 +2,42 @@ import { request } from './api';
 import type { UserKYC, WalletTx, CreatorEligibility, WalletBalance, QuotaProgress } from '../types';
 
 export const walletService = {
-  fetchWallet: (userId: string) =>
-    request<{ user_id: string; balance: number; transactions: WalletTx[] }>(`/wallet/${userId}`),
+  fetchWallet: (userId: string, filter?: { from?: string; to?: string; type?: string }) => {
+    const params = new URLSearchParams();
+    if (filter?.from) params.set('from', filter.from);
+    if (filter?.to) params.set('to', filter.to);
+    if (filter?.type) params.set('type', filter.type);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return request<{ user_id: string; balance: number; transactions: WalletTx[] }>(`/wallet/${userId}${qs}`);
+  },
 
-  getWallet: async (): Promise<WalletBalance> => {
+  getWallet: async (userId?: string, filter?: { from?: string; to?: string; type?: string }): Promise<WalletBalance> => {
     try {
-      const data = await request<any>('/wallet/me');
+      const params = new URLSearchParams();
+      if (filter?.from) params.set('from', filter.from);
+      if (filter?.to) params.set('to', filter.to);
+      if (filter?.type) params.set('type', filter.type);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const endpoint = userId ? `/wallet/${userId}${qs}` : `/wallet/me${qs}`;
+      const data = await request<any>(endpoint);
       return {
-        userId: data.user_id || 'usr-default',
-        availableBalance: data.balance || 0,
+        userId: data.user_id || userId || 'usr-default',
+        availableBalance: data.balance ?? data.available_balance ?? 0,
         welcomeCredit: data.welcome_credit || 250,
         approvedEarnings: data.approved_earnings || 0,
         kycVerified: data.kyc_verified || false,
+        kycBank: data.kyc_bank || '',
+        kycAccount: data.kyc_account || '',
+        totalLifetimeEarnings: data.total_lifetime_earnings ?? data.balance ?? 0,
+        periodEarnings: data.period_earnings ?? data.balance ?? 0,
+        periodWithdrawals: data.period_withdrawals ?? 0,
+        pendingWithdrawals: data.pending_withdrawals ?? 0,
+        breakdown: data.breakdown || {
+          milestone_rewards: 0,
+          video_royalties: 0,
+          welcome_bonus: 250,
+        },
+        filter: data.filter || filter,
         transactions: (data.transactions || []).map((t: any): WalletTx => ({
           id: t.id,
           amount: t.amount,
@@ -26,11 +50,20 @@ export const walletService = {
       };
     } catch {
       return {
-        userId: 'usr-default',
+        userId: userId || 'usr-default',
         availableBalance: 250,
         welcomeCredit: 250,
         approvedEarnings: 0,
         kycVerified: false,
+        totalLifetimeEarnings: 250,
+        periodEarnings: 250,
+        periodWithdrawals: 0,
+        pendingWithdrawals: 0,
+        breakdown: {
+          milestone_rewards: 0,
+          video_royalties: 0,
+          welcome_bonus: 250,
+        },
         transactions: [
           {
             id: 'tx-welcome-001',

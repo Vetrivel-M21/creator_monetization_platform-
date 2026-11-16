@@ -61,6 +61,25 @@ class VideoModel {
     required this.createdAt,
   });
 
+  factory VideoModel.placeholder(String id) {
+    return VideoModel(
+      id: id,
+      title: 'Loading video...',
+      description: '',
+      category: 'General',
+      durationMinutes: 0.0,
+      durationFormatted: '0:00',
+      durationBucket: '<5m',
+      videoUrl: '',
+      hlsUrl: '',
+      thumbnailUrl: '',
+      creatorName: 'Creator',
+      creatorHandle: '@creator',
+      creatorAvatar: '',
+      createdAt: DateTime.now(),
+    );
+  }
+
   bool get isShort => videoType == 'short';
   bool get isTranscodeReady => transcodeStatus.toLowerCase() == 'ready';
   bool get isTranscodeProcessing =>
