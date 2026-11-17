@@ -49,6 +49,8 @@ services:
       - MYSQL_DATABASE=${DB_NAME:-creator_platform}
       - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL:-https://entertainment.aurapictures.online}
       - PLAYBACK_TOKEN_REQUIRED=${PLAYBACK_TOKEN_REQUIRED:-false}
+      - PUSH_ENABLED=${PUSH_ENABLED:-true}
+      - FIREBASE_CREDENTIALS_FILE=${FIREBASE_CREDENTIALS_FILE:-/app/secrets/serviceAccountKey.json}
     # Internal only: backend communicates with frontend via armss-net
     expose:
       - "2085"
@@ -56,6 +58,7 @@ services:
       # CRITICAL: Persists uploaded videos, HLS chunks, logos and thumbnails across container redeploys
       - ./backend/data:/app/data
       - ./backend/logs:/app/logs
+      - ./backend/secrets:/app/secrets:ro
     networks:
       - armss-net
 

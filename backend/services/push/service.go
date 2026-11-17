@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -32,6 +33,12 @@ func New(ctx context.Context, db *sql.DB, repo Repository, enabled bool, credsFi
 
 	if credsFile == "" {
 		log.Println("[Push] FIREBASE_CREDENTIALS_FILE not provided, push notifications disabled")
+		return s
+	}
+
+	if _, err := os.Stat(credsFile); os.IsNotExist(err) {
+		log.Printf("[Push] WARNING: Firebase credentials file not found at '%s'. Push notifications disabled.", credsFile)
+		log.Printf("[Push] ACTION REQUIRED: Download serviceAccountKey.json from Firebase Console (Project Settings -> Service accounts -> Generate new private key) and place it in backend/secrets/serviceAccountKey.json")
 		return s
 	}
 

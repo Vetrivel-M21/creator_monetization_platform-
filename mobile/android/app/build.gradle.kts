@@ -51,9 +51,6 @@ flutter {
 }
 
 dependencies {
-    // Import the Firebase BoM
-    implementation(platform("com.google.firebase:firebase-bom:35.2.0"))
-
-    // Add dependencies for Firebase products
-    implementation("com.google.firebase:firebase-analytics")
+    // Flutter plugins (firebase_core, firebase_messaging) automatically import and manage
+    // their required native Firebase dependencies. Optional BoM can be added if native code is used directly.
 }

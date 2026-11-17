@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'core/services/push_service.dart';
 import 'core/theme/app_theme.dart';
@@ -12,11 +13,12 @@ void main() async {
   await AuthService.instance.init();
   await LibraryService.instance.init();
 
-  // Register Firebase background push handler (failsafe)
+  // Initialize Firebase Core & Background Messaging
   try {
+    await Firebase.initializeApp();
     FirebaseMessaging.onBackgroundMessage(pushBackgroundHandler);
   } catch (e) {
-    debugPrint('[Push] Background messaging init note: $e');
+    debugPrint('[Push] Firebase init / Background messaging note: $e');
   }
 
   // Set system UI overlay style for Clean Sky Blue Light Theme

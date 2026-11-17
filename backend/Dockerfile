@@ -22,7 +22,7 @@ RUN apk --no-cache add ca-certificates tzdata ffmpeg
 COPY --from=builder /app/server .
 
 # Ensure storage directories exist
-RUN mkdir -p /app/data/masters /app/data/hls /app/data/thumbnails /app/data/logos /app/logs
+RUN mkdir -p /app/data/masters /app/data/hls /app/data/thumbnails /app/data/logos /app/logs /app/secrets
 
 EXPOSE 2085
 
