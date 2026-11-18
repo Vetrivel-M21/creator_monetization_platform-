@@ -8,6 +8,7 @@ import '../support/support_screen.dart';
 import '../legal/legal_screen.dart';
 import '../upload/upload_video_screen.dart';
 import '../video_detail/video_detail_screen.dart';
+import '../earnings/earnings_screen.dart';
 import '../../widgets/auth_sheet.dart';
 import '../../widgets/auth_required_dialog.dart';
 
@@ -801,6 +802,15 @@ class _StudioScreenState extends State<StudioScreen> {
         title: const Text('Creator Studio'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.account_balance_wallet_outlined),
+            tooltip: 'Earnings & Bank Settlements',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const EarningsScreen()),
+              ).then((_) => _loadStudio());
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: 'Channel Settings',
             onPressed: () {
@@ -1179,12 +1189,14 @@ class _StudioScreenState extends State<StudioScreen> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const SizedBox(width: 6),
-                        const Icon(
-                          Icons.verified_rounded,
-                          size: 17,
-                          color: AppColors.primaryAccent,
-                        ),
+                        if (studio.isKycVerified) ...[
+                          const SizedBox(width: 6),
+                          const Icon(
+                            Icons.verified_rounded,
+                            size: 17,
+                            color: AppColors.primaryAccent,
+                          ),
+                        ],
                       ],
                     ),
                     const SizedBox(height: 3),
@@ -1489,6 +1501,39 @@ class _StudioScreenState extends State<StudioScreen> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: InkWell(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const EarningsScreen()),
+                ).then((_) => _loadStudio());
+              },
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.query_stats_rounded, size: 16, color: Colors.white),
+                    SizedBox(width: 8),
+                    Text(
+                      'View Detailed Earnings Showcase & Date Filters',
+                      style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(width: 4),
+                    Icon(Icons.arrow_forward_ios_rounded, size: 11, color: Colors.white70),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),

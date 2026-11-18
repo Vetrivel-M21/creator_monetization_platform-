@@ -49,4 +49,5 @@ class AppColors {
   static const Color primaryText = textPrimary;
   static const Color mutedText = textSecondary;
   static const Color successGreen = emerald;
+  static const Color primaryBlue = primary;
 }

@@ -9,6 +9,7 @@ import 'home/home_screen.dart';
 import 'shorts/shorts_screen.dart';
 import 'subscriptions/subscriptions_screen.dart';
 import 'studio/studio_screen.dart';
+import 'earnings/earnings_screen.dart';
 import 'video_detail/video_detail_screen.dart';
 
 class MainShellScreen extends StatefulWidget {
@@ -27,15 +28,32 @@ class _MainShellScreenState extends State<MainShellScreen> {
     _initPush();
   }
 
+  @override
+  void dispose() {
+    AuthService.instance.removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
   void _initPush() {
     final auth = AuthService.instance;
+    PushService.instance.start(
+      registerToken: (token, platform) async {
+        await ApiService().registerPushDevice(token, platform, auth.token);
+      },
+      onTap: (data) {
+        _handleNotificationTap(data);
+      },
+    );
+
+    auth.addListener(_onAuthChanged);
+  }
+
+  void _onAuthChanged() {
+    final auth = AuthService.instance;
     if (!auth.isGuest) {
-      PushService.instance.start(
+      PushService.instance.syncToken(
         registerToken: (token, platform) async {
           await ApiService().registerPushDevice(token, platform, auth.token);
-        },
-        onTap: (data) {
-          _handleNotificationTap(data);
         },
       );
     }
@@ -49,6 +67,10 @@ class _MainShellScreenState extends State<MainShellScreen> {
         MaterialPageRoute(
           builder: (_) => VideoDetailScreen(videoId: id.toString(), ),
         ),
+      );
+    } else if (screen == 'earnings' || screen == 'wallet' || screen == 'payout' || screen == 'kyc') {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const EarningsScreen()),
       );
     } else if (screen == 'studio_video' || screen == 'studio') {
       setState(() => _currentIndex = 4);

@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
-  Play,
   Award,
   RefreshCw,
   Coins,
@@ -20,6 +19,10 @@ import {
   Ban,
   Clock,
   Sparkles,
+  RotateCcw,
+  CheckSquare,
+  Square,
+  Film,
 } from 'lucide-react';
 import type { Video, AdminUserAuditItem, Category, SupportThread, SupportMessage } from '../types';
 import { adminService } from '../services/adminService';
@@ -27,17 +30,18 @@ import { AdminPushNotificationTab } from './AdminPushNotificationTab';
 import { AdminKYCTab } from './AdminKYCTab';
 import { AdminPayoutsTab } from './AdminPayoutsTab';
 import { formatDuration } from '../utils/formatters';
+import { HLSPlayer } from '../components/player/HLSPlayer';
+import { toAbsoluteMediaUrl, formatRelativeTime } from '../utils/thumbnail';
 
 interface AdminViewProps {
   videos: Video[];
   onModerateSuccess: () => void;
-  onSelectVideo: (video: Video) => void;
+  onSelectVideo?: (video: Video) => void;
 }
 
 export const AdminView: React.FC<AdminViewProps> = ({
   videos,
   onModerateSuccess,
-  onSelectVideo,
 }) => {
   const [activeTab, setActiveTab] = useState<'moderation' | 'creators' | 'categories' | 'kyc' | 'payouts' | 'settings' | 'support' | 'push'>('moderation');
   const [processingId, setProcessingId] = useState<string | null>(null);
@@ -58,19 +62,61 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
 
+  // Moderation Two-Pane & Action State
+  const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
+  const [selectedBulkIds, setSelectedBulkIds] = useState<Set<string>>(new Set());
+  const [isBulkApproving, setIsBulkApproving] = useState(false);
+  const [undoToast, setUndoToast] = useState<{ videoId: string; videoTitle: string; secondsLeft: number } | null>(null);
+  const [rejectDialogVideo, setRejectDialogVideo] = useState<Video | null>(null);
+  const [rejectReason, setRejectReason] = useState<string>('Spam');
+  const [rejectCustomNote, setRejectCustomNote] = useState<string>('');
+  const [isMobileDetailOpen, setIsMobileDetailOpen] = useState(false);
+
+  // Pending counts for sidebar
+  const [pendingKYCCount, setPendingKYCCount] = useState(0);
+  const [pendingPayoutsCount, setPendingPayoutsCount] = useState(0);
+
+  const loadPendingCounters = async () => {
+    try {
+      const kycList = await adminService.fetchKYCList('pending');
+      if (Array.isArray(kycList)) {
+        setPendingKYCCount(kycList.length);
+      }
+    } catch (_) {}
+    try {
+      const payoutsList = await adminService.fetchPayouts('pending');
+      if (Array.isArray(payoutsList)) {
+        setPendingPayoutsCount(payoutsList.length);
+      }
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    if (!undoToast) return;
+    const timer = setInterval(() => {
+      setUndoToast((prev) => {
+        if (!prev || prev.secondsLeft <= 1) return null;
+        return { ...prev, secondsLeft: prev.secondsLeft - 1 };
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [undoToast]);
+
   const loadModerationVideos = async () => {
     try {
       setIsLoadingVideos(true);
       const data = await adminService.fetchVideos();
-      if (Array.isArray(data) && data.length > 0) {
-        setModerationVideos(data);
-      } else if (videos && videos.length > 0) {
-        setModerationVideos(videos);
-      }
+      const list = Array.isArray(data) && data.length > 0 ? data : (videos && videos.length > 0 ? videos : []);
+      setModerationVideos(list);
+      setSelectedVideo((prev) => {
+        if (!prev) return list[0] || null;
+        return list.find((v) => v.id === prev.id) || list[0] || null;
+      });
     } catch (err) {
       console.error('Failed to load moderation videos:', err);
       if (videos && videos.length > 0) {
         setModerationVideos(videos);
+        setSelectedVideo((prev) => prev || videos[0] || null);
       }
     } finally {
       setIsLoadingVideos(false);
@@ -212,6 +258,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
     loadCategories();
     loadSettings();
     loadSupportThreads();
+    loadPendingCounters();
   }, []);
 
   const handleModerate = async (videoId: string, action: 'approve' | 'reject', reason?: string) => {
@@ -221,7 +268,16 @@ export const AdminView: React.FC<AdminViewProps> = ({
       await loadModerationVideos();
       onModerateSuccess();
 
+      const vid = moderationVideos.find((v) => v.id === videoId) || videos.find((v) => v.id === videoId);
+
       if (action === 'approve') {
+        // Trigger 8-second undo toast
+        setUndoToast({
+          videoId,
+          videoTitle: vid?.title || 'Video',
+          secondsLeft: 8,
+        });
+
         if (res.milestone_awarded) {
           setActionType('success');
           setActionMessage(
@@ -235,20 +291,50 @@ export const AdminView: React.FC<AdminViewProps> = ({
         }
       } else {
         setActionType('warning');
-        setActionMessage(reason ? `Video rejected: ${reason}` : 'Video rejected as synthetic AI content.');
+        setActionMessage(reason ? `Video rejected: ${reason}` : 'Video rejected.');
       }
 
       loadAuditUsers();
       setTimeout(() => {
         setActionMessage(null);
         onModerateSuccess();
-      }, 2500);
+      }, 3000);
     } catch {
       setActionType('warning');
       setActionMessage('Failed to update video status');
     } finally {
       setProcessingId(null);
     }
+  };
+
+  const handleUndo = async () => {
+    if (!undoToast) return;
+    const vidId = undoToast.videoId;
+    setUndoToast(null);
+    try {
+      setProcessingId(vidId);
+      await adminService.moderateVideo(vidId, 'pending');
+      await loadModerationVideos();
+      onModerateSuccess();
+      setActionType('info');
+      setActionMessage('Approval undone. Video restored to Pending review.');
+      setTimeout(() => setActionMessage(null), 3000);
+    } catch (err) {
+      console.error('Failed to undo approval:', err);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleConfirmReject = async () => {
+    if (!rejectDialogVideo) return;
+    const reasonText = rejectReason === 'Other' && rejectCustomNote.trim()
+      ? `Other: ${rejectCustomNote.trim()}`
+      : rejectReason;
+    await handleModerate(rejectDialogVideo.id, 'reject', reasonText);
+    setRejectDialogVideo(null);
+    setRejectReason('Inappropriate content');
+    setRejectCustomNote('');
   };
 
   // User Actions: Approve, Reject, Block, Unblock, Delete
@@ -431,200 +517,656 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const pendingCreatorsCount = auditUsers.filter((u) => u.account_status === 'pending_approval').length;
   const totalUnreadSupport = supportThreads.reduce((acc, t) => acc + (t.unread_admin_count || 0), 0);
 
+  const allVideosList = moderationVideos.length > 0 ? moderationVideos : (videos || []);
+  const pendingVideosCount = allVideosList.filter((v) => v.status === 'pending_review' || v.status === 'pending').length;
+  const approvedVideosCount = allVideosList.filter((v) => v.status === 'approved').length;
+  const rejectedVideosCount = allVideosList.filter((v) => v.status === 'rejected').length;
+
+  type AdminNavTabId = 'moderation' | 'creators' | 'categories' | 'kyc' | 'payouts' | 'settings' | 'support' | 'push';
+  interface AdminNavItem {
+    id: AdminNavTabId;
+    label: string;
+    icon: any;
+    badge?: number;
+  }
+
+  const navGroups: { title: string; items: AdminNavItem[] }[] = [
+    {
+      title: 'Review',
+      items: [
+        { id: 'moderation', label: 'Moderation Queue', icon: ShieldAlert, badge: pendingVideosCount },
+        { id: 'support', label: 'Support Desk', icon: MessageSquare, badge: totalUnreadSupport },
+        { id: 'push', label: 'Push Notifications', icon: Send },
+      ],
+    },
+    {
+      title: 'People',
+      items: [
+        { id: 'creators', label: 'Users & Roles', icon: UserCog, badge: pendingCreatorsCount },
+        { id: 'kyc', label: 'KYC Verifications', icon: ShieldCheck, badge: pendingKYCCount },
+      ],
+    },
+    {
+      title: 'Money',
+      items: [
+        { id: 'payouts', label: 'Payouts & Settlements', icon: Coins, badge: pendingPayoutsCount },
+        { id: 'settings', label: 'Monetization Rules', icon: Award },
+      ],
+    },
+    {
+      title: 'Platform',
+      items: [
+        { id: 'categories', label: 'Categories', icon: Sparkles },
+      ],
+    },
+  ];
+
+  // Keyboard Shortcuts for Moderation Queue (J/K next/prev, A approve, R reject)
+  useEffect(() => {
+    if (activeTab !== 'moderation') return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable) {
+        return;
+      }
+      if (rejectDialogVideo) return;
+
+      const filtered = allVideosList.filter((v) => {
+        if (statusFilter === 'pending') return v.status === 'pending_review' || v.status === 'pending';
+        if (statusFilter === 'approved') return v.status === 'approved';
+        if (statusFilter === 'rejected') return v.status === 'rejected';
+        return true;
+      });
+      const sorted = [...filtered].sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+      if (sorted.length === 0) return;
+
+      const currentVid = selectedVideo && sorted.some(v => v.id === selectedVideo.id)
+        ? sorted.find(v => v.id === selectedVideo.id)!
+        : sorted[0];
+      const currentIndex = sorted.findIndex((v) => v.id === currentVid.id);
+
+      const key = e.key.toLowerCase();
+      if (key === 'j') {
+        e.preventDefault();
+        if (currentIndex < sorted.length - 1) {
+          setSelectedVideo(sorted[currentIndex + 1]);
+        }
+      } else if (key === 'k') {
+        e.preventDefault();
+        if (currentIndex > 0) {
+          setSelectedVideo(sorted[currentIndex - 1]);
+        }
+      } else if (key === 'a' && currentVid) {
+        e.preventDefault();
+        if (currentVid.status !== 'approved' && processingId !== currentVid.id) {
+          handleModerate(currentVid.id, 'approve');
+        }
+      } else if (key === 'r' && currentVid) {
+        e.preventDefault();
+        if (currentVid.status !== 'rejected' && processingId !== currentVid.id) {
+          setRejectDialogVideo(currentVid);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab, allVideosList, statusFilter, selectedVideo, rejectDialogVideo, processingId]);
+
+  const handleToggleBulk = (id: string) => {
+    setSelectedBulkIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleApproveSelected = async () => {
+    if (selectedBulkIds.size === 0 || isBulkApproving) return;
+    const ids = Array.from(selectedBulkIds);
+    try {
+      setIsBulkApproving(true);
+      for (const id of ids) {
+        await adminService.moderateVideo(id, 'approve');
+      }
+      await loadModerationVideos();
+      onModerateSuccess();
+      setSelectedBulkIds(new Set());
+      setActionType('success');
+      setActionMessage(`Approved ${ids.length} videos successfully.`);
+      setTimeout(() => setActionMessage(null), 3000);
+    } catch (err) {
+      console.error('Bulk approval error:', err);
+    } finally {
+      setIsBulkApproving(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col gap-6 pb-24 max-w-7xl mx-auto animate-fade-in">
-      {/* Top Banner (Bento Style) */}
-      <div className="p-6 sm:p-8 rounded-3xl bg-[#FFFFFF] border border-[#DCE7F6] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-[#2563EB] shrink-0">
-            <ShieldAlert size={22} />
+    <div className="flex flex-col gap-4 pb-24 max-w-7xl mx-auto animate-fade-in text-slate-900">
+      {/* Compact Header with Single Stat Line */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 sm:p-5 rounded-2xl bg-white border border-[#DCE7F6] shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-[#2563EB] shrink-0">
+            <ShieldAlert size={18} />
           </div>
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#0F172A]">
-              Admin Moderation & Platform Control
+            <h1 className="text-base sm:text-lg font-bold text-[#0F172A] leading-tight">
+              Admin Moderation & Control
             </h1>
-            <p className="text-xs text-[#64748B] mt-0.5 font-normal">
-              Approvals & Lifecycle • Multi-Tier Monetization (Silver/Gold/Diamond) • Live Support Desk
+            <p className="text-xs text-[#64748B] mt-0.5">
+              <span className="font-semibold text-amber-700">{pendingVideosCount} pending</span>
+              <span className="mx-1.5 text-slate-300">·</span>
+              <span className="text-emerald-700">{approvedVideosCount} approved</span>
+              <span className="mx-1.5 text-slate-300">·</span>
+              <span className="text-slate-500">{rejectedVideosCount} rejected</span>
             </p>
           </div>
         </div>
 
-        {/* Tab Switcher */}
-        <div className="flex items-center gap-6 sm:gap-8 border-b border-[#DCE7F6] pb-px overflow-x-auto">
-          {[
-            { id: 'moderation' as const, label: 'Moderation Queue' },
-            {
-              id: 'creators' as const,
-              label: `Users & Roles (${auditUsers.length})`,
-              badge: pendingCreatorsCount > 0 ? `${pendingCreatorsCount} Pending` : undefined,
-              badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
-            },
-            { id: 'categories' as const, label: `Categories (${categories.length})` },
-            { id: 'kyc' as const, label: 'KYC Verifications' },
-            { id: 'payouts' as const, label: 'Payouts & Settlements' },
-            { id: 'settings' as const, label: 'Monetization Rules' },
-            {
-              id: 'support' as const,
-              label: 'Support Desk',
-              badge: totalUnreadSupport > 0 ? `${totalUnreadSupport} New` : undefined,
-              badgeColor: 'bg-blue-100 text-blue-800 border-blue-300',
-            },
-            { id: 'push' as const, label: 'Push Notifications' },
-          ].map((tab) => {
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  setActiveTab(tab.id);
-                  if (tab.id === 'creators') loadAuditUsers();
-                  if (tab.id === 'categories') loadCategories();
-                  if (tab.id === 'support') loadSupportThreads();
-                }}
-                className={`pb-3 pt-1 text-xs sm:text-sm whitespace-nowrap transition-all duration-200 cursor-pointer flex items-center gap-1.5 ${
-                  isActive
-                    ? 'border-b-2 border-[#2563EB] pb-2 text-[#0F172A] font-semibold'
-                    : 'border-b-2 border-transparent text-[#64748B] hover:text-[#0F172A] font-normal'
-                }`}
-              >
-                <span>{tab.label}</span>
-                {tab.badge && (
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${tab.badgeColor}`}>
-                    {tab.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              loadModerationVideos();
+              loadPendingCounters();
+              loadAuditUsers();
+              loadSupportThreads();
+            }}
+            disabled={isLoadingVideos}
+            className="px-3 py-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] border border-[#DCE7F6] text-xs font-semibold text-[#64748B] hover:text-[#0F172A] flex items-center gap-1.5 cursor-pointer shadow-xs"
+          >
+            <RefreshCw size={13} className={isLoadingVideos ? 'animate-spin' : ''} />
+            <span>Sync All</span>
+          </button>
         </div>
       </div>
 
-      {actionMessage && (
-        <div
-          className={`p-4 rounded-2xl border text-xs flex items-center gap-2.5 shadow-sm animate-fade-in font-medium ${
-            actionType === 'success'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : actionType === 'warning'
-              ? 'bg-amber-50 border-amber-200 text-amber-800'
-              : 'bg-blue-50 border-blue-200 text-blue-800'
-          }`}
-        >
-          {actionType === 'success' ? (
-            <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-          ) : actionType === 'warning' ? (
-            <AlertTriangle size={16} className="text-amber-600 shrink-0" />
-          ) : (
-            <Coins size={16} className="text-[#2563EB] shrink-0" />
-          )}
-          <span>{actionMessage}</span>
-        </div>
-      )}
-
-      {/* Tab 1: Video Moderation Queue */}
-      {activeTab === 'moderation' && (() => {
-        const allList = moderationVideos.length > 0 ? moderationVideos : videos;
-        const filteredList = allList.filter((v) => {
-          if (statusFilter === 'pending') return v.status === 'pending_review';
-          if (statusFilter === 'approved') return v.status === 'approved';
-          if (statusFilter === 'rejected') return v.status === 'rejected';
-          return true;
-        });
-
-        return (
-          <div className="space-y-5">
-            <div className="p-4 rounded-2xl bg-[#FFFFFF] border border-[#DCE7F6] flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                {(['all', 'pending', 'approved', 'rejected'] as const).map((s) => (
+      {/* Main Two-Column Frame: Left Vertical Sub-menu + Right Tab Content */}
+      <div className="flex flex-col md:flex-row items-start gap-5">
+        {/* Left Vertical Admin Sub-Menu */}
+        <nav className="w-full md:w-56 shrink-0 rounded-2xl bg-white border border-[#DCE7F6] p-3 space-y-3.5 shadow-xs">
+          {navGroups.map((group) => (
+            <div key={group.title} className="space-y-1">
+              <div className="px-2.5 py-0.5 text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider">
+                {group.title}
+              </div>
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
                   <button
-                    key={s}
-                    onClick={() => setStatusFilter(s)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize transition-all cursor-pointer ${
-                      statusFilter === s
-                        ? 'bg-[#2563EB] text-white shadow-xs'
-                        : 'bg-[#F8FAFC] text-[#64748B] hover:bg-[#E2E8F0] border border-[#DCE7F6]'
+                    key={item.id}
+                    onClick={() => {
+                      setActiveTab(item.id);
+                      if (item.id === 'creators') loadAuditUsers();
+                      if (item.id === 'categories') loadCategories();
+                      if (item.id === 'support') loadSupportThreads();
+                    }}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-left ${
+                      isActive
+                        ? 'bg-[#E0EDFF] text-[#1D4ED8] border border-[#BFDBFE] shadow-xs'
+                        : 'text-[#64748B] hover:text-[#0F172A] hover:bg-[#F8FAFC] border border-transparent'
                     }`}
                   >
-                    {s} ({allList.filter((v) => (s === 'all' ? true : s === 'pending' ? v.status === 'pending_review' : v.status === s)).length})
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Icon size={15} className={isActive ? 'text-[#2563EB]' : 'text-[#64748B]'} />
+                      <span className="truncate">{item.label}</span>
+                    </div>
+                    {item.badge !== undefined && item.badge > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                        {item.badge}
+                      </span>
+                    )}
                   </button>
-                ))}
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+
+        {/* Right Tab Content Container */}
+        <div className="flex-1 min-w-0 w-full space-y-4">
+          {/* Undo Toast Banner (8-Second Window) */}
+          {undoToast && (
+            <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 text-xs text-[#0F172A] flex items-center justify-between shadow-xs animate-fade-in">
+              <div className="flex items-center gap-2.5 font-medium">
+                <CheckCircle2 size={16} className="text-[#2563EB] shrink-0" />
+                <span>
+                  Video approved! You can undo this decision ({undoToast.secondsLeft}s).
+                </span>
               </div>
               <button
-                onClick={loadModerationVideos}
-                disabled={isLoadingVideos}
-                className="btn-secondary-pill flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-[#64748B] hover:text-[#0F172A] cursor-pointer"
+                onClick={handleUndo}
+                className="px-3 py-1 rounded-xl bg-white hover:bg-blue-100 text-[#2563EB] border border-blue-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
               >
-                <RefreshCw size={13} className={isLoadingVideos ? 'animate-spin' : ''} />
-                <span>Refresh</span>
+                <RotateCcw size={12} />
+                <span>Undo</span>
               </button>
             </div>
+          )}
 
-            {filteredList.length === 0 ? (
-              <div className="p-12 text-center rounded-3xl bg-[#FFFFFF] border border-[#DCE7F6] text-xs text-[#64748B]">
-                No videos found in this filter.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {filteredList.map((video) => (
-                  <div
-                    key={video.id}
-                    className="rounded-2xl bg-[#FFFFFF] border border-[#DCE7F6] overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow"
-                  >
-                    <div>
-                      <div className="relative aspect-video bg-black group cursor-pointer" onClick={() => onSelectVideo(video)}>
-                        <img src={video.thumbnailUrl || video.thumbnail_url} alt={video.title} className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Play size={28} className="text-white" />
-                        </div>
-                        <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/80 text-[10px] text-white font-mono">
-                          {formatDuration(video.durationMinutes || video.duration_minutes || 0)}
-                        </div>
-                      </div>
-                      <div className="p-4 space-y-2">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-semibold text-[#0F172A]">{video.creatorName || video.creator_name}</span>
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono ${
-                              video.status === 'approved'
-                                ? 'bg-emerald-50 text-emerald-700'
-                                : video.status === 'rejected'
-                                ? 'bg-red-50 text-red-700'
-                                : 'bg-amber-50 text-amber-700'
-                            }`}
-                          >
-                            {video.status}
-                          </span>
-                        </div>
-                        <h4 className="text-xs font-bold text-[#0F172A] line-clamp-2">{video.title}</h4>
-                      </div>
+          {/* Regular Alert Message */}
+          {actionMessage && !undoToast && (
+            <div
+              className={`p-3.5 rounded-2xl border text-xs flex items-center gap-2.5 shadow-xs animate-fade-in font-medium ${
+                actionType === 'success'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : actionType === 'warning'
+                  ? 'bg-amber-50 border-amber-200 text-amber-800'
+                  : 'bg-blue-50 border-blue-200 text-blue-800'
+              }`}
+            >
+              {actionType === 'success' ? (
+                <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+              ) : actionType === 'warning' ? (
+                <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+              ) : (
+                <Coins size={16} className="text-[#2563EB] shrink-0" />
+              )}
+              <span>{actionMessage}</span>
+            </div>
+          )}
+
+          {/* Tab 1: Video Moderation Queue (Two-Pane Layout) */}
+          {activeTab === 'moderation' && (() => {
+            const filteredList = allVideosList.filter((v) => {
+              if (statusFilter === 'pending') return v.status === 'pending_review' || v.status === 'pending';
+              if (statusFilter === 'approved') return v.status === 'approved';
+              if (statusFilter === 'rejected') return v.status === 'rejected';
+              return true;
+            });
+
+            // Sorted oldest first (waiting longest)
+            const sortedVideos = [...filteredList].sort((a, b) => {
+              const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+              const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+              return timeA - timeB;
+            });
+
+            const activeSelectedVideo = selectedVideo && sortedVideos.some((v) => v.id === selectedVideo.id)
+              ? sortedVideos.find((v) => v.id === selectedVideo.id)!
+              : sortedVideos[0] || null;
+
+            const getStatusChip = (status?: string) => {
+              if (status === 'approved') {
+                return (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    Approved
+                  </span>
+                );
+              }
+              if (status === 'rejected') {
+                return (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-50 text-red-700 border border-red-200">
+                    Rejected
+                  </span>
+                );
+              }
+              return (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                  Pending review
+                </span>
+              );
+            };
+
+            const renderThumbnailBox = (v: Video, widthClass = 'w-20 sm:w-24') => {
+              const thumbUrl = toAbsoluteMediaUrl(v.thumbnailUrl || v.thumbnail_url);
+              return (
+                <div className={`relative ${widthClass} aspect-video rounded-lg overflow-hidden bg-slate-900 shrink-0 border border-[#DCE7F6]`}>
+                  {thumbUrl ? (
+                    <img src={thumbUrl} alt={v.title} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-slate-500">
+                      <Film size={16} className="opacity-40" />
                     </div>
-                    <div className="p-3 border-t border-[#F1F5F9] flex gap-2">
+                  )}
+                  <span className="absolute bottom-1 right-1 px-1 py-0.2 rounded bg-black/80 text-[9px] text-white font-mono">
+                    {formatDuration(v.durationMinutes || v.duration_minutes || 0)}
+                  </span>
+                </div>
+              );
+            };
+
+            const rawHls = activeSelectedVideo ? (activeSelectedVideo.hlsUrl || activeSelectedVideo.hls_url || '') : '';
+            const rawMp4 = activeSelectedVideo ? (activeSelectedVideo.videoUrl || activeSelectedVideo.video_url || '') : '';
+            const streamUrl = toAbsoluteMediaUrl(rawHls || rawMp4);
+            const selectedPoster = activeSelectedVideo ? toAbsoluteMediaUrl(activeSelectedVideo.thumbnailUrl || activeSelectedVideo.thumbnail_url) : '';
+
+            const handleSelectAllPending = () => {
+              const pendingIds = sortedVideos
+                .filter((v) => v.status === 'pending_review' || v.status === 'pending')
+                .map((v) => v.id);
+              if (selectedBulkIds.size === pendingIds.length && pendingIds.length > 0) {
+                setSelectedBulkIds(new Set());
+              } else {
+                setSelectedBulkIds(new Set(pendingIds));
+              }
+            };
+
+            return (
+              <div className="space-y-3.5">
+                {/* Top Queue Toolbar */}
+                <div className="p-3 rounded-2xl bg-white border border-[#DCE7F6] flex flex-wrap items-center justify-between gap-3 shadow-xs">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {(['all', 'pending', 'approved', 'rejected'] as const).map((s) => {
+                      const count = allVideosList.filter((v) =>
+                        s === 'all'
+                          ? true
+                          : s === 'pending'
+                          ? v.status === 'pending_review' || v.status === 'pending'
+                          : v.status === s
+                      ).length;
+                      const label = s === 'all' ? 'All' : s === 'pending' ? 'Pending' : s === 'approved' ? 'Approved' : 'Rejected';
+                      return (
+                        <button
+                          key={s}
+                          onClick={() => setStatusFilter(s)}
+                          className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                            statusFilter === s
+                              ? 'bg-[#2563EB] text-white shadow-xs'
+                              : 'bg-[#F8FAFC] text-[#64748B] hover:bg-[#E2E8F0] border border-[#DCE7F6]'
+                          }`}
+                        >
+                          {label} ({count})
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {selectedBulkIds.size > 0 && (
                       <button
-                        onClick={() => handleModerate(video.id, 'approve')}
-                        disabled={processingId === video.id || video.status === 'approved'}
-                        className="flex-1 btn-pill-primary py-2 text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40"
+                        onClick={handleApproveSelected}
+                        disabled={isBulkApproving}
+                        className="px-3 py-1.5 rounded-full bg-[#2563EB] text-white text-xs font-semibold hover:bg-[#1D4ED8] flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
                       >
                         <CheckCircle2 size={13} />
-                        <span>Approve</span>
+                        <span>Approve Selected ({selectedBulkIds.size})</span>
                       </button>
-                      <button
-                        onClick={() => {
-                          const reason = window.prompt('Enter rejection reason:', 'Content guidelines violation');
-                          if (reason !== null) handleModerate(video.id, 'reject', reason);
-                        }}
-                        disabled={processingId === video.id || video.status === 'rejected'}
-                        className="flex-1 py-2 text-xs font-semibold rounded-full border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40"
-                      >
-                        <XCircle size={13} />
-                        <span>Reject</span>
-                      </button>
-                    </div>
+                    )}
+                    <button
+                      onClick={loadModerationVideos}
+                      disabled={isLoadingVideos}
+                      className="px-3 py-1.5 rounded-full bg-white hover:bg-slate-50 border border-[#DCE7F6] text-xs font-semibold text-[#64748B] hover:text-[#0F172A] flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <RefreshCw size={13} className={isLoadingVideos ? 'animate-spin' : ''} />
+                      <span>Refresh</span>
+                    </button>
                   </div>
-                ))}
+                </div>
+
+                {/* Keyboard Shortcuts Hint Bar */}
+                <div className="px-3 py-1.5 rounded-xl bg-blue-50/70 border border-blue-100 flex items-center justify-between text-[11px] text-[#475569]">
+                  <span className="flex items-center gap-1.5">
+                    <span className="font-semibold text-[#0F172A]">Shortcuts:</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-white border border-blue-200 text-[10px] font-mono text-[#2563EB]">J</kbd>
+                    <span>/</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-white border border-blue-200 text-[10px] font-mono text-[#2563EB]">K</kbd>
+                    <span>next/prev</span>
+                    <span className="text-slate-300">·</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-white border border-blue-200 text-[10px] font-mono text-[#2563EB]">A</kbd>
+                    <span>approve</span>
+                    <span className="text-slate-300">·</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-white border border-blue-200 text-[10px] font-mono text-red-600">R</kbd>
+                    <span>reject</span>
+                  </span>
+                  <span className="text-[10px] font-mono text-[#64748B]">Oldest first</span>
+                </div>
+
+                {sortedVideos.length === 0 ? (
+                  <div className="p-12 text-center rounded-2xl bg-white border border-[#DCE7F6] text-xs text-[#64748B] space-y-2 shadow-xs">
+                    <CheckCircle2 size={28} className="mx-auto text-emerald-600 opacity-60" />
+                    <p className="font-semibold text-[#0F172A]">All caught up. No videos waiting for review.</p>
+                    <p className="text-[11px] text-[#64748B]">Switch filter to view approved or rejected archives.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                    {/* Left Queue List */}
+                    <div className="lg:col-span-5 rounded-2xl bg-white border border-[#DCE7F6] overflow-hidden flex flex-col shadow-xs max-h-[760px]">
+                      {/* Select All Pending Row */}
+                      <div className="p-2.5 px-3 border-b border-[#F1F5F9] bg-[#F8FAFC] flex items-center justify-between text-xs text-[#64748B]">
+                        <button
+                          onClick={handleSelectAllPending}
+                          className="flex items-center gap-2 hover:text-[#0F172A] cursor-pointer font-medium"
+                        >
+                          {selectedBulkIds.size > 0 ? (
+                            <CheckSquare size={14} className="text-[#2563EB]" />
+                          ) : (
+                            <Square size={14} className="text-slate-400" />
+                          )}
+                          <span>Select all pending</span>
+                        </button>
+                        <span className="font-mono text-[11px]">
+                          {sortedVideos.length} item{sortedVideos.length > 1 ? 's' : ''}
+                        </span>
+                      </div>
+
+                      {/* Video Items Scrollable Column */}
+                      <div className="overflow-y-auto divide-y divide-[#F1F5F9] scrollbar-none">
+                        {sortedVideos.map((video) => {
+                          const isSelected = activeSelectedVideo?.id === video.id;
+                          const isChecked = selectedBulkIds.has(video.id);
+
+                          return (
+                            <div
+                              key={video.id}
+                              onClick={() => {
+                                setSelectedVideo(video);
+                                setIsMobileDetailOpen(true);
+                              }}
+                              className={`p-3 flex items-start gap-3 transition-colors cursor-pointer text-left ${
+                                isSelected
+                                  ? 'bg-blue-50/70 border-l-4 border-[#2563EB]'
+                                  : 'hover:bg-[#F8FAFC]'
+                              }`}
+                            >
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleBulk(video.id);
+                                }}
+                                className="pt-1 text-slate-400 hover:text-[#2563EB] cursor-pointer"
+                              >
+                                {isChecked ? (
+                                  <CheckSquare size={14} className="text-[#2563EB]" />
+                                ) : (
+                                  <Square size={14} />
+                                )}
+                              </div>
+
+                              {renderThumbnailBox(video)}
+
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="text-[11px] font-semibold text-[#64748B] truncate">
+                                    {video.creatorName || video.creator_name}
+                                  </span>
+                                  {getStatusChip(video.status)}
+                                </div>
+                                <h4 className="text-xs font-bold text-[#0F172A] line-clamp-1 leading-snug">
+                                  {video.title}
+                                </h4>
+                                <div className="flex items-center gap-1.5 text-[10px] text-[#64748B] font-mono">
+                                  <span className="capitalize">{video.category || 'General'}</span>
+                                  <span>•</span>
+                                  <span>waiting {formatRelativeTime(video.createdAt)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Right Detail & Real Player Pane (Desktop) */}
+                    <div className="hidden lg:block lg:col-span-7 rounded-2xl bg-white border border-[#DCE7F6] p-5 shadow-xs sticky top-4 space-y-4">
+                      {activeSelectedVideo ? (
+                        <>
+                          {/* Real Video Player */}
+                          <div className="aspect-video w-full rounded-xl overflow-hidden bg-black shadow-inner">
+                            {streamUrl ? (
+                              <HLSPlayer
+                                src={streamUrl}
+                                poster={selectedPoster}
+                                autoPlay={false}
+                                className="w-full h-full"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-2">
+                                <Film size={32} className="opacity-40" />
+                                <span className="text-xs">No playable video stream found</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Video Header & Meta */}
+                          <div className="space-y-2 border-b border-[#F1F5F9] pb-3.5">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="space-y-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  {getStatusChip(activeSelectedVideo.status)}
+                                  <span className="text-[11px] font-semibold text-[#64748B] capitalize">
+                                    {activeSelectedVideo.category || 'General'}
+                                  </span>
+                                  <span className="text-slate-300">•</span>
+                                  <span className="text-[11px] text-[#64748B] font-mono">
+                                    Uploaded {activeSelectedVideo.createdAt ? new Date(activeSelectedVideo.createdAt).toLocaleString() : 'Recently'}
+                                  </span>
+                                </div>
+                                <h2 className="text-sm sm:text-base font-bold text-[#0F172A] leading-snug">
+                                  {activeSelectedVideo.title}
+                                </h2>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 pt-1 text-xs text-[#64748B]">
+                              <span className="font-semibold text-[#0F172A]">
+                                Channel: {activeSelectedVideo.creatorName || activeSelectedVideo.creator_name}
+                              </span>
+                              <span>•</span>
+                              <span className="font-mono">
+                                Duration: {formatDuration(activeSelectedVideo.durationMinutes || activeSelectedVideo.duration_minutes || 0)}
+                              </span>
+                              <span>•</span>
+                              <span className="font-mono">
+                                ID: <span className="text-slate-400">{activeSelectedVideo.id}</span>
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Description */}
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-bold text-[#0F172A] uppercase tracking-wider">
+                              Description
+                            </span>
+                            <p className="text-xs text-[#64748B] leading-relaxed max-h-32 overflow-y-auto pr-1">
+                              {activeSelectedVideo.description || 'No description provided by creator.'}
+                            </p>
+                          </div>
+
+                          {/* Actions Bar */}
+                          <div className="pt-3 border-t border-[#F1F5F9] flex items-center justify-between gap-3">
+                            <div className="text-[11px] text-[#64748B]">
+                              Press <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border text-[10px] font-mono">A</kbd> to approve, <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border text-[10px] font-mono">R</kbd> to reject
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setRejectDialogVideo(activeSelectedVideo)}
+                                disabled={processingId === activeSelectedVideo.id || activeSelectedVideo.status === 'rejected'}
+                                className="px-4 py-2 text-xs font-semibold rounded-xl border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition-colors"
+                              >
+                                <XCircle size={14} />
+                                <span>Reject Video</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleModerate(activeSelectedVideo.id, 'approve')}
+                                disabled={processingId === activeSelectedVideo.id || activeSelectedVideo.status === 'approved'}
+                                className="px-5 py-2 text-xs font-semibold rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition-colors shadow-xs"
+                              >
+                                <CheckCircle2 size={14} />
+                                <span>Approve Video</span>
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="py-24 text-center text-xs text-[#64748B]">
+                          Select a video from the queue to inspect and play.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Mobile Detail Drawer */}
+                    {isMobileDetailOpen && activeSelectedVideo && (
+                      <div className="fixed inset-0 z-50 lg:hidden flex flex-col justify-end bg-black/60 backdrop-blur-xs">
+                        <div className="bg-white rounded-t-3xl max-h-[90vh] overflow-y-auto p-5 space-y-4 shadow-2xl">
+                          <div className="flex items-center justify-between border-b pb-3">
+                            <div className="flex items-center gap-2">
+                              {getStatusChip(activeSelectedVideo.status)}
+                              <span className="text-xs font-bold text-[#0F172A] truncate max-w-[200px]">
+                                {activeSelectedVideo.title}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => setIsMobileDetailOpen(false)}
+                              className="p-1 rounded-full text-slate-400 hover:text-black cursor-pointer"
+                            >
+                              <X size={18} />
+                            </button>
+                          </div>
+
+                          <div className="aspect-video w-full rounded-xl overflow-hidden bg-black">
+                            {streamUrl && (
+                              <HLSPlayer
+                                src={streamUrl}
+                                poster={selectedPoster}
+                                autoPlay={false}
+                                className="w-full h-full"
+                              />
+                            )}
+                          </div>
+
+                          <div className="space-y-1">
+                            <h3 className="text-sm font-bold text-[#0F172A]">{activeSelectedVideo.title}</h3>
+                            <p className="text-xs text-[#64748B]">By {activeSelectedVideo.creatorName || activeSelectedVideo.creator_name}</p>
+                            <p className="text-xs text-[#64748B] pt-1">{activeSelectedVideo.description}</p>
+                          </div>
+
+                          <div className="pt-3 border-t flex gap-2">
+                            <button
+                              onClick={() => {
+                                setIsMobileDetailOpen(false);
+                                setRejectDialogVideo(activeSelectedVideo);
+                              }}
+                              className="flex-1 py-2.5 text-xs font-semibold rounded-xl border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <XCircle size={14} />
+                              <span>Reject</span>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setIsMobileDetailOpen(false);
+                                handleModerate(activeSelectedVideo.id, 'approve');
+                              }}
+                              className="flex-1 py-2.5 text-xs font-semibold rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <CheckCircle2 size={14} />
+                              <span>Approve</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        );
-      })()}
+            );
+          })()}
 
       {/* Tab 2: Users & Creator Roles Management (With Approvals, Blocking, Deletion) */}
       {activeTab === 'creators' && (() => {
@@ -1174,6 +1716,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
       {activeTab === 'push' && (
         <AdminPushNotificationTab auditUsers={auditUsers} />
       )}
+        </div>
+      </div>
 
       {/* Category Create / Edit Modal */}
       {isCategoryModalOpen && (
@@ -1239,6 +1783,102 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Reason Dialog Modal */}
+      {rejectDialogVideo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-md bg-[#FFFFFF] rounded-3xl border border-[#DCE7F6] shadow-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-red-600 font-bold text-sm">
+                <AlertCircle size={17} />
+                <span>Reject Video Submission</span>
+              </div>
+              <button
+                onClick={() => {
+                  setRejectDialogVideo(null);
+                  setRejectReason('Inappropriate content');
+                  setRejectCustomNote('');
+                }}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-slate-50 border border-[#DCE7F6]">
+              <p className="text-xs text-[#0F172A] font-semibold line-clamp-1">{rejectDialogVideo.title}</p>
+              <p className="text-[11px] text-[#64748B]">Channel: {rejectDialogVideo.creatorName || rejectDialogVideo.creator_name || 'Creator'}</p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-[#0F172A]">Rejection Reason *</label>
+              <div className="space-y-1.5">
+                {[
+                  'Spam',
+                  'Copyright',
+                  'Inappropriate content',
+                  'Low quality',
+                  'Other',
+                ].map((reason) => (
+                  <label
+                    key={reason}
+                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-xs cursor-pointer transition-colors ${
+                      rejectReason === reason
+                        ? 'bg-red-50/70 border-red-200 text-red-700 font-semibold'
+                        : 'border-[#DCE7F6] text-[#0F172A] hover:bg-[#F8FAFC]'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="rejectReason"
+                      value={reason}
+                      checked={rejectReason === reason}
+                      onChange={() => setRejectReason(reason)}
+                      className="text-red-600 focus:ring-red-500"
+                    />
+                    <span>{reason}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {rejectReason === 'Other' && (
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[#0F172A]">Optional Guidance Note</label>
+                <textarea
+                  rows={2}
+                  value={rejectCustomNote}
+                  onChange={(e) => setRejectCustomNote(e.target.value)}
+                  placeholder="Explain why this was rejected or what changes are required..."
+                  className="w-full p-2.5 rounded-xl bg-[#F8FAFC] border border-[#DCE7F6] text-xs focus:outline-none focus:border-[#2563EB]"
+                />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setRejectDialogVideo(null);
+                  setRejectReason('Inappropriate content');
+                  setRejectCustomNote('');
+                }}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReject}
+                disabled={processingId === rejectDialogVideo.id}
+                className="px-4 py-2 rounded-full text-xs font-semibold bg-red-600 hover:bg-red-700 text-white shadow-xs cursor-pointer disabled:opacity-50 transition-colors"
+              >
+                {processingId === rejectDialogVideo.id ? 'Rejecting...' : 'Confirm Rejection'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -40,6 +40,7 @@ export interface User {
   account_status?: 'pending_approval' | 'active' | 'suspended' | 'rejected' | string;
   suspension_reason?: string;
   subscribersCount?: number;
+  is_kyc_verified?: boolean;
 }
 
 export interface AdminUserAuditItem {

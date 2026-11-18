@@ -13,6 +13,7 @@ class UserModel {
   final String tier; // 'silver', 'gold', 'diamond'
   final bool isActive;
   final double walletAmount;
+  final bool isKycVerified;
   final String? token;
 
   const UserModel({
@@ -28,6 +29,7 @@ class UserModel {
     this.tier = 'silver',
     this.isActive = true,
     this.walletAmount = 0.0,
+    this.isKycVerified = false,
     this.token,
   });
 
@@ -45,6 +47,7 @@ class UserModel {
       tier: json['tier']?.toString() ?? 'silver',
       isActive: json['is_active'] == true || json['is_active'] == 1,
       walletAmount: (json['wallet_amount'] as num?)?.toDouble() ?? 0.0,
+      isKycVerified: json['is_kyc_verified'] == true || json['is_kyc_verified'] == 1,
       token: token ?? json['token']?.toString(),
     );
   }
@@ -63,6 +66,7 @@ class UserModel {
       'tier': tier,
       'is_active': isActive,
       'wallet_amount': walletAmount,
+      'is_kyc_verified': isKycVerified,
       'token': token,
     };
   }
@@ -75,6 +79,7 @@ class UserModel {
     String? channelLogo,
     String? channelDescription,
     double? walletAmount,
+    bool? isKycVerified,
     String? token,
   }) {
     return UserModel(
@@ -90,6 +95,7 @@ class UserModel {
       tier: tier,
       isActive: isActive,
       walletAmount: walletAmount ?? this.walletAmount,
+      isKycVerified: isKycVerified ?? this.isKycVerified,
       token: token ?? this.token,
     );
   }

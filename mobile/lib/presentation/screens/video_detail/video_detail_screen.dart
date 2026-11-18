@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import 'package:http/http.dart' as http;
 import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/video_model.dart';
@@ -9,6 +10,22 @@ import '../../../data/services/auth_service.dart';
 import '../../../data/services/library_service.dart';
 import '../../widgets/comments_sheet.dart';
 import '../../widgets/auth_required_dialog.dart';
+
+class VideoQualityOption {
+  final String label;
+  final String sublabel;
+  final int? height;
+  final int? bitrate;
+  final String url;
+
+  const VideoQualityOption({
+    required this.label,
+    required this.sublabel,
+    this.height,
+    this.bitrate,
+    required this.url,
+  });
+}
 
 class VideoDetailScreen extends StatefulWidget {
   final VideoModel? video;
@@ -40,6 +57,12 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
   bool _isExpandedDescription = false;
   List<VideoModel> _relatedVideos = [];
   bool _isLoadingRelated = true;
+
+  // Video Quality & Playback Speed Controls
+  List<VideoQualityOption> _qualityOptions = [];
+  VideoQualityOption? _selectedQuality;
+  double _playbackSpeed = 1.0;
+  String _activeStreamUrl = '';
 
   @override
   void initState() {
@@ -117,6 +140,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
       _isPlayerInitialized = false;
       _hasPlayerError = false;
       _isProcessingTranscode = false;
+      _qualityOptions = [];
+      _selectedQuality = null;
     });
 
     final auth = AuthService.instance;
@@ -195,8 +220,10 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
           _isPlayerInitialized = true;
           _hasPlayerError = false;
           _isProcessingTranscode = false;
+          _activeStreamUrl = targetUrl;
         });
         controller.play();
+        _loadAvailableQualities(targetUrl);
       }
     }).catchError((err) {
       debugPrint('[VideoDetail] Candidate $index failed ($targetUrl): $err');
@@ -222,6 +249,410 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
         _isLoadingRelated = false;
       });
     }
+  }
+
+  Future<void> _loadAvailableQualities(String masterUrl) async {
+    try {
+      final uri = Uri.parse(masterUrl);
+      final res = await http.get(uri).timeout(const Duration(seconds: 4));
+      if (res.statusCode == 200 && res.body.contains('#EXTM3U')) {
+        final lines = res.body.split('\n');
+        final parsed = <VideoQualityOption>[];
+        final seenHeights = <int>{};
+
+        final autoOpt = VideoQualityOption(
+          label: 'Auto',
+          sublabel: 'Dynamic adaptive bitrate',
+          height: null,
+          url: masterUrl,
+        );
+        parsed.add(autoOpt);
+
+        for (int i = 0; i < lines.length; i++) {
+          final line = lines[i].trim();
+          if (line.startsWith('#EXT-X-STREAM-INF:')) {
+            int? qualityHeight;
+            int? bitrate;
+            final resMatch = RegExp(r'RESOLUTION=(\d+)x(\d+)').firstMatch(line);
+            if (resMatch != null) {
+              final w = int.tryParse(resMatch.group(1) ?? '') ?? 0;
+              final h = int.tryParse(resMatch.group(2) ?? '') ?? 0;
+              qualityHeight = (w > 0 && h > 0) ? (w < h ? w : h) : (h > 0 ? h : null);
+            }
+            final bwMatch = RegExp(r'BANDWIDTH=(\d+)').firstMatch(line);
+            if (bwMatch != null) {
+              bitrate = int.tryParse(bwMatch.group(1) ?? '');
+            }
+
+            if (qualityHeight != null && seenHeights.contains(qualityHeight)) {
+              continue;
+            }
+
+            for (int j = i + 1; j < lines.length; j++) {
+              final nextLine = lines[j].trim();
+              if (nextLine.isNotEmpty && !nextLine.startsWith('#')) {
+                String variantUrl = nextLine;
+                if (!variantUrl.startsWith('http://') && !variantUrl.startsWith('https://')) {
+                  final resolved = uri.resolve(variantUrl);
+                  if (uri.hasQuery && !resolved.hasQuery) {
+                    variantUrl = resolved.replace(query: uri.query).toString();
+                  } else {
+                    variantUrl = resolved.toString();
+                  }
+                }
+
+                if (qualityHeight != null) {
+                  seenHeights.add(qualityHeight);
+                }
+
+                final label = qualityHeight != null ? '${qualityHeight}p' : 'Custom';
+                final kbps = bitrate != null ? ' • ${(bitrate / 1000).round()} kbps' : '';
+                final desc = qualityHeight != null && qualityHeight >= 1080
+                    ? 'Full HD$kbps'
+                    : (qualityHeight != null && qualityHeight >= 720 ? 'HD$kbps' : 'Standard$kbps');
+
+                parsed.add(VideoQualityOption(
+                  label: label,
+                  sublabel: desc,
+                  height: qualityHeight,
+                  bitrate: bitrate,
+                  url: variantUrl,
+                ));
+                break;
+              }
+            }
+          }
+        }
+
+        if (parsed.length > 1) {
+          final specific = parsed.sublist(1);
+          specific.sort((a, b) => (b.height ?? 0).compareTo(a.height ?? 0));
+          if (mounted) {
+            setState(() {
+              _qualityOptions = [autoOpt, ...specific];
+              _selectedQuality ??= autoOpt;
+            });
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('[VideoDetail] Error parsing master manifest: $e');
+    }
+
+    if (mounted) {
+      setState(() {
+        _qualityOptions = [
+          VideoQualityOption(
+            label: 'Auto',
+            sublabel: 'Standard streaming profile',
+            height: null,
+            url: masterUrl,
+          ),
+        ];
+        _selectedQuality ??= _qualityOptions.first;
+      });
+    }
+  }
+
+  Future<void> _switchQuality(VideoQualityOption option) async {
+    if (_selectedQuality?.label == option.label && _selectedQuality?.url == option.url) {
+      return;
+    }
+
+    final oldController = _playerController;
+    final currentPos = oldController?.value.position ?? Duration.zero;
+    final wasPlaying = oldController?.value.isPlaying ?? false;
+
+    setState(() {
+      _selectedQuality = option;
+      _isPlayerInitialized = false;
+    });
+
+    try {
+      await oldController?.dispose();
+      final newController = VideoPlayerController.networkUrl(Uri.parse(option.url));
+      _playerController = newController;
+
+      await newController.initialize();
+      await newController.seekTo(currentPos);
+      await newController.setPlaybackSpeed(_playbackSpeed);
+      await newController.setVolume(_isMuted ? 0.0 : 1.0);
+      if (wasPlaying) {
+        await newController.play();
+      }
+
+      newController.addListener(() {
+        if (mounted && _dragValue == null) {
+          setState(() {});
+        }
+      });
+
+      if (mounted) {
+        setState(() {
+          _isPlayerInitialized = true;
+          _hasPlayerError = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('[VideoDetail] Failed switching quality: $e');
+      if (mounted) {
+        _initializePlayer();
+      }
+    }
+  }
+
+  Future<void> _changePlaybackSpeed(double speed) async {
+    setState(() {
+      _playbackSpeed = speed;
+    });
+    await _playerController?.setPlaybackSpeed(speed);
+  }
+
+  void _showSettingsBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (modalContext, setModalState) {
+            return SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Drag Handle
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFCBD5E1),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Header
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE0EDFF),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.tune_rounded, color: AppColors.primary, size: 20),
+                            ),
+                            const SizedBox(width: 10),
+                            const Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Playback Settings',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                Text(
+                                  'Quality & Playback Speed',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 20, color: AppColors.textSecondary),
+                          onPressed: () => Navigator.pop(ctx),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Quality Section Header
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'VIDEO QUALITY',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.8,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDCFCE7),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'Adaptive Bitrate',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF15803D),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Quality Options List
+                    ..._qualityOptions.map((opt) {
+                      final isSelected = _selectedQuality?.label == opt.label;
+                      final isAuto = opt.height == null;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: InkWell(
+                          onTap: () {
+                            setModalState(() {});
+                            Navigator.pop(ctx);
+                            _switchQuality(opt);
+                          },
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: isSelected ? const Color(0xFFE0EDFF) : Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: isSelected ? const Color(0xFF93C5FD) : const Color(0xFFE2E8F0),
+                                width: isSelected ? 1.5 : 1,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? AppColors.primary : const Color(0xFFF1F5F9),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    isAuto
+                                        ? Icons.auto_awesome_rounded
+                                        : (opt.height != null && opt.height! >= 720
+                                            ? Icons.hd_rounded
+                                            : Icons.sd_rounded),
+                                    color: isSelected ? Colors.white : AppColors.textSecondary,
+                                    size: 16,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        opt.label,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                                          color: isSelected ? AppColors.primary : AppColors.textPrimary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 1),
+                                      Text(
+                                        opt.sublabel,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: isSelected
+                                              ? AppColors.primary.withValues(alpha: 0.8)
+                                              : AppColors.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (isSelected)
+                                  const Icon(
+                                    Icons.check_circle_rounded,
+                                    color: AppColors.primary,
+                                    size: 20,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 12),
+
+                    // Playback Speed Section
+                    const Text(
+                      'PLAYBACK SPEED',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((speed) {
+                        final isSelected = _playbackSpeed == speed;
+                        return Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            child: InkWell(
+                              onTap: () {
+                                setModalState(() {});
+                                _changePlaybackSpeed(speed);
+                              },
+                              borderRadius: BorderRadius.circular(10),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? AppColors.primary : const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: isSelected ? AppColors.primary : const Color(0xFFE2E8F0),
+                                  ),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  speed == 1.0 ? '1x' : '${speed}x',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                                    color: isSelected ? Colors.white : AppColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   void _togglePlayPause() {
@@ -428,24 +859,71 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
               ),
             ),
 
-            // Sound Mute Toggle (Top Right)
+            // Top Right Controls (Quality/Settings & Mute)
             Positioned(
               top: 10,
               right: 10,
-              child: GestureDetector(
-                onTap: _toggleMute,
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: const BoxDecoration(
-                    color: Colors.black54,
-                    shape: BoxShape.circle,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Quality & Speed Settings Pill
+                  GestureDetector(
+                    onTap: _showSettingsBottomSheet,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white24, width: 0.8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.settings_outlined, color: Colors.white, size: 14),
+                          const SizedBox(width: 4),
+                          Text(
+                            _selectedQuality?.label ?? 'Auto',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          if (_playbackSpeed != 1.0) ...[
+                            const SizedBox(width: 3),
+                            Text(
+                              '${_playbackSpeed}x',
+                              style: const TextStyle(
+                                color: Color(0xFF60A5FA),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
                   ),
-                  child: Icon(
-                    _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                    color: Colors.white,
-                    size: 18,
+                  const SizedBox(width: 8),
+
+                  // Sound Mute Toggle
+                  GestureDetector(
+                    onTap: _toggleMute,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.65),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white24, width: 0.8),
+                      ),
+                      child: Icon(
+                        _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
 

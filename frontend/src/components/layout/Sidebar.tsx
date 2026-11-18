@@ -1,12 +1,12 @@
 import React from 'react';
-import { Compass, Film, Bookmark, Video, Shield, Upload, LogIn, LogOut, Tv, ArrowRight, Headphones } from 'lucide-react';
+import { Compass, Film, Bookmark, Video, Shield, LogOut, Tv, Headphones } from 'lucide-react';
 import type { User, MainNavTab } from '../../types';
 
 interface SidebarProps {
   activeTab: MainNavTab;
   setActiveTab: (tab: MainNavTab) => void;
   user: User | null;
-  onOpenUpload: () => void;
+  onOpenUpload?: () => void;
   onOpenAuth: () => void;
   onLogout: () => void;
   onOpenSupport?: () => void;
@@ -18,7 +18,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   setActiveTab,
   user,
-  onOpenUpload,
   onOpenAuth,
   onLogout,
   onOpenSupport,
@@ -39,15 +38,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="sidebar-brand-block flex items-center gap-3">
           <img
             src="/assets/aura_mobile_app_icon_dark_squircle.png"
-            alt="Aura Entertainment Logo"
+            alt="Aura Logo"
             className="w-9 h-9 rounded-xl object-contain shadow-sm shrink-0"
           />
           <div className="min-w-0">
-            <div className="sidebar-brand-title flex items-center gap-1.5">
+            <div className="sidebar-brand-title">
               <span>AURA</span>
-              <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-[#E0EDFF] text-[#1D4ED8] border border-[#BFDBFE] uppercase tracking-wider font-mono">
-                ENTERTAINMENT
-              </span>
             </div>
             <p className="sidebar-brand-subtitle">
               Creator Streaming Network
@@ -100,13 +96,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <Video
                 size={17}
                 strokeWidth={activeTab === 'studio' ? 2.2 : 1.75}
-                className={activeTab === 'studio' ? 'text-[#10B981]' : 'text-slate-400'}
+                className={activeTab === 'studio' ? 'text-[#2563EB]' : 'text-[#64748B]'}
               />
               <span>Creator Studio</span>
             </div>
-            <span className="text-[10px] font-mono font-bold text-[#10B981] bg-[#10B981]/15 px-2 py-0.5 rounded-full border border-[#10B981]/25">
-              Pro
-            </span>
           </button>
 
           {user?.role === 'admin' && (
@@ -115,10 +108,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className={`sidebar-nav-button ${activeTab === 'admin' ? 'active' : ''}`}
             >
               <div className="flex items-center gap-3">
-                <Shield size={17} strokeWidth={1.75} className="text-amber-400" />
-                <span className="text-amber-300">Admin Moderation</span>
+                <Shield
+                  size={17}
+                  strokeWidth={activeTab === 'admin' ? 2.2 : 1.75}
+                  className={activeTab === 'admin' ? 'text-[#2563EB]' : 'text-[#64748B]'}
+                />
+                <span>Admin Moderation</span>
               </div>
-              <span className="text-[9px] font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+              <span className="text-[10px] font-semibold text-[#64748B] bg-[#F1F5F9] px-1.5 py-0.5 rounded border border-[#DCE7F6]">
                 Staff
               </span>
             </button>
@@ -133,70 +130,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <Headphones size={17} strokeWidth={1.75} className="text-[#2563EB]" />
                 <span>Support & Help</span>
               </div>
-              <span className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                Live
-              </span>
             </button>
           )}
         </nav>
 
-        {/* Creator Studio Upload Promotion Banner */}
-        <div className="sidebar-promo-card space-y-2.5">
-          <div className="flex items-center justify-between">
+        {/* Creator Program Card - Only for non-verified creators */}
+        {(!user || !user.is_kyc_verified) && (
+          <div className="sidebar-promo-card space-y-1.5">
             <span className="text-xs font-bold text-[#0F172A] tracking-tight">Creator Program</span>
-            <span className="text-[10px] font-mono font-bold text-[#10B981] bg-[#10B981]/15 px-2 py-0.5 rounded-full border border-[#10B981]/20">
-              Verified
-            </span>
+            <p className="text-[11px] text-[#64748B] leading-relaxed font-normal">
+              Upload verified human videos to earn milestone royalties directly to your bank account.
+            </p>
           </div>
-          <p className="text-[11px] text-[#64748B] leading-relaxed font-normal">
-            Upload verified human videos to earn channel royalties directly to your bank account.
-          </p>
-          <button
-            onClick={onOpenUpload}
-            className="w-full mt-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-bold tracking-tight transition-all active:scale-[0.98] shadow-[0_2px_10px_rgba(37,99,235,0.3)] cursor-pointer"
-          >
-            <Upload size={13} strokeWidth={2.4} />
-            <span>Publish Video</span>
-          </button>
-        </div>
+        )}
       </div>
 
-      {/* Footer Profile or Sign-in Box - Strictly p-4 mb-3 to prevent clipping */}
-      <div className="sidebar-user-footer pt-3 pb-2">
-        {user ? (
-          <div className="flex items-center justify-between p-4 mb-3 rounded-2xl bg-[#FFFFFF] border border-[#DCE7F6] shadow-sm">
-            <div
-              onClick={() => setActiveTab('studio')}
-              className="flex items-center gap-3 min-w-0 cursor-pointer flex-1"
-            >
-              <div className="relative">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-100 to-blue-50 border border-blue-200 flex items-center justify-center font-bold text-xs text-[#2563EB]">
-                  {user.name ? user.name[0].toUpperCase() : 'U'}
-                </div>
-              </div>
-              <div className="min-w-0">
-                <div className="text-xs font-bold text-[#0F172A] truncate">{user.name}</div>
-                <div className="text-[10px] text-[#64748B] font-normal">
-                  {user.tier || 'Silver'} Creator
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={onLogout}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
-              title="Sign Out"
-            >
-              <LogOut size={15} />
-            </button>
-          </div>
-        ) : (
+      {/* Footer Area - Single Logout action when signed in without duplicated profile card */}
+      <div className="sidebar-user-footer pt-3 pb-2 space-y-2">
+        {user && (
           <button
-            onClick={onOpenAuth}
-            className="w-full flex items-center justify-center gap-2.5 p-4 mb-3 rounded-xl bg-[#FFFFFF] hover:bg-[#F8FAFC] text-[#0F172A] border border-[#DCE7F6] text-xs font-semibold tracking-tight transition-all active:scale-[0.98] cursor-pointer shadow-sm hover:border-[#BFDBFE]"
+            onClick={onLogout}
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-semibold text-[#64748B] hover:text-red-600 hover:bg-red-50 border border-[#DCE7F6] hover:border-red-200 transition-colors cursor-pointer bg-white"
+            title="Sign out of Aura"
           >
-            <LogIn size={14} className="text-[#2563EB]" />
-            <span>Sign In to Platform</span>
-            <ArrowRight size={13} className="text-[#64748B]" />
+            <LogOut size={14} />
+            <span>Sign Out</span>
           </button>
         )}
 

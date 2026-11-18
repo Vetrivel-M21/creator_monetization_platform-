@@ -48,13 +48,13 @@ export const adminService = {
   fetchVideos: () =>
     request<any[]>('/admin/videos').then(data => Array.isArray(data) ? data.map(normalizeAdminVideo) : []),
 
-  moderateVideo: (videoId: string, action: 'approve' | 'reject', reason?: string) =>
+  moderateVideo: (videoId: string, action: 'approve' | 'reject' | 'pending' | 'reset', reason?: string) =>
     request<any>(`/admin/videos/${videoId}/verify`, {
       method: 'PUT',
       body: JSON.stringify({ action, reason })
     }),
 
-  verifyVideo: (videoId: string, action: 'approve' | 'reject', reason?: string) =>
+  verifyVideo: (videoId: string, action: 'approve' | 'reject' | 'pending' | 'reset', reason?: string) =>
     request<any>(`/admin/videos/${videoId}/verify`, {
       method: 'PUT',
       body: JSON.stringify({ action, reason })

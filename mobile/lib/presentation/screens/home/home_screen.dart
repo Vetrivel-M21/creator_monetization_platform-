@@ -4,8 +4,10 @@ import '../../../data/models/category_model.dart';
 import '../../../data/models/video_model.dart';
 import '../../../data/services/api_service.dart';
 import '../../../data/services/auth_service.dart';
+import '../../../data/services/notification_store.dart';
 import '../../widgets/video_card.dart';
 import '../../widgets/auth_sheet.dart';
+import '../../widgets/notification_center_sheet.dart';
 import '../video_detail/video_detail_screen.dart';
 import '../search/search_screen.dart';
 import '../profile/profile_screen.dart';
@@ -68,94 +70,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showNotificationsSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceBorder,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Notifications',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.3,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Close'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              ListTile(
-                leading: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.celebration_rounded, color: AppColors.primary, size: 20),
-                ),
-                title: const Text(
-                  'Welcome to Creator Monetization Platform!',
-                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
-                ),
-                subtitle: const Text(
-                  'Stream, upload, and monetize your content with CMAF adaptive bitrate delivery.',
-                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                ),
-              ),
-              const SizedBox(height: 8),
-              ListTile(
-                leading: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppColors.emerald.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.monetization_on_rounded, color: AppColors.emerald, size: 20),
-                ),
-                title: const Text(
-                  'Monetization Enabled',
-                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
-                ),
-                subtitle: const Text(
-                  'Complete your KYC verification in Creator Studio to unlock fast withdrawals.',
-                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-          ),
-        ),
-      ),
-    );
+    NotificationCenterSheet.show(context);
   }
 
   @override
@@ -227,27 +142,48 @@ class _HomeScreenState extends State<HomeScreen> {
                     );
                   },
                 ),
-                Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.notifications_none_rounded, color: AppColors.textPrimary, size: 22),
-                      tooltip: 'Notifications',
-                      onPressed: _showNotificationsSheet,
-                    ),
-                    Positioned(
-                      top: 12,
-                      right: 12,
-                      child: Container(
-                        width: 7,
-                        height: 7,
-                        decoration: const BoxDecoration(
-                          color: AppColors.primary,
-                          shape: BoxShape.circle,
+                ValueListenableBuilder<int>(
+                  valueListenable: NotificationStore.instance.unreadCountNotifier,
+                  builder: (context, unreadCount, _) {
+                    return Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            unreadCount > 0 ? Icons.notifications_active_rounded : Icons.notifications_none_rounded,
+                            color: unreadCount > 0 ? AppColors.primaryBlue : AppColors.textPrimary,
+                            size: 22,
+                          ),
+                          tooltip: 'Notifications',
+                          onPressed: _showNotificationsSheet,
                         ),
-                      ),
-                    ),
-                  ],
+                        if (unreadCount > 0)
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: AppColors.rose,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.white, width: 1.5),
+                              ),
+                              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                              child: Text(
+                                unreadCount > 9 ? '9+' : '$unreadCount',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 ),
                 // Account Avatar Button (Reactive)
                 Padding(

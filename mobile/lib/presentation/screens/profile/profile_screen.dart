@@ -7,6 +7,7 @@ import '../../../data/services/api_service.dart';
 import '../../../data/services/auth_service.dart';
 import '../library/library_screen.dart';
 import '../studio/studio_screen.dart';
+import '../earnings/earnings_screen.dart';
 import '../support/support_screen.dart';
 import '../legal/legal_screen.dart';
 
@@ -14,6 +15,7 @@ class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
   static Future<void> push(BuildContext context) {
+    AuthService.instance.refreshProfile();
     return Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const ProfileScreen()),
     );
@@ -554,14 +556,15 @@ class ProfileScreen extends StatelessWidget {
                             backgroundColor: AppColors.scaffoldBackground,
                             backgroundImage: NetworkImage(user.displayAvatar),
                           ),
-                          Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: const BoxDecoration(
-                              color: AppColors.emerald,
-                              shape: BoxShape.circle,
+                          if (user.isKycVerified)
+                            Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: AppColors.emerald,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.check, size: 14, color: Colors.white),
                             ),
-                            child: const Icon(Icons.check, size: 14, color: Colors.white),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 14),
@@ -662,6 +665,17 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
+                      _buildListTile(
+                        icon: Icons.account_balance_wallet_outlined,
+                        title: 'Earnings & Bank Settlements',
+                        subtitle: 'Live wallet balance, date filters & KYC status',
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const EarningsScreen()),
+                          );
+                        },
+                      ),
+                      const Divider(height: 1, indent: 56),
                       _buildListTile(
                         icon: Icons.video_library_rounded,
                         title: 'Creator Studio & Monetization',

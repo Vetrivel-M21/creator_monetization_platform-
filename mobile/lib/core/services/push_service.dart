@@ -6,11 +6,13 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../../data/services/notification_store.dart';
 
 @pragma('vm:entry-point')
 Future<void> pushBackgroundHandler(RemoteMessage message) async {
   try {
     await Firebase.initializeApp();
+    await NotificationStore.saveBackgroundMessage(message);
   } catch (e) {
     debugPrint('[Push] Background handler init note: $e');
   }
@@ -55,25 +57,12 @@ class PushService {
         alert: true,
         badge: true,
         sound: true,
+        provisional: false,
       );
 
-      if (settings.authorizationStatus == AuthorizationStatus.denied) {
-        debugPrint('[Push] User denied notification permissions');
-        return;
-      }
+      debugPrint('[Push] FCM permission status: ${settings.authorizationStatus}');
 
-      final platform = Platform.isIOS ? 'ios' : 'android';
-      final token = await fm.getToken();
-      if (token != null && token.isNotEmpty) {
-        debugPrint('[Push] FCM Token obtained: ${token.substring(0, token.length > 15 ? 15 : token.length)}...');
-        await registerToken(token, platform);
-      }
-
-      fm.onTokenRefresh.listen((newToken) {
-        registerToken(newToken, platform);
-      });
-
-      // Foreground notification display
+      // Foreground notification display settings
       const initSettings = InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(),
@@ -91,7 +80,37 @@ class PushService {
         },
       );
 
+      // Explicitly request Android 13+ (API 33+) notification runtime permission
+      if (Platform.isAndroid) {
+        final androidImpl = _local.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        final androidGranted = await androidImpl?.requestNotificationsPermission();
+        debugPrint('[Push] Android 13+ runtime notification permission: $androidGranted');
+
+        // Create high-importance notification channel
+        const channel = AndroidNotificationChannel(
+          'armss_general',
+          'General Notifications',
+          description: 'Updates for video reviews, channel uploads, KYC verifications and releases',
+          importance: Importance.max,
+        );
+        await androidImpl?.createNotificationChannel(channel);
+      }
+
+      final platform = Platform.isIOS ? 'ios' : 'android';
+      final token = await fm.getToken();
+      if (token != null && token.isNotEmpty) {
+        debugPrint('[Push] FCM Token obtained: ${token.substring(0, token.length > 15 ? 15 : token.length)}...');
+        await registerToken(token, platform);
+      }
+
+      fm.onTokenRefresh.listen((newToken) {
+        registerToken(newToken, platform);
+      });
+
       FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+        // Save to in-app notification inbox
+        await NotificationStore.instance.addFromRemoteMessage(message);
+
         final n = message.notification;
         if (n == null) return;
 
@@ -107,7 +126,7 @@ class PushService {
               'armss_general',
               'General Notifications',
               channelDescription: 'Updates for video reviews, channel uploads and platform announcements',
-              importance: Importance.high,
+              importance: Importance.max,
               priority: Priority.high,
               styleInformation: bytes != null
                   ? BigPictureStyleInformation(ByteArrayAndroidBitmap(bytes))
@@ -121,12 +140,18 @@ class PushService {
 
       // App opened from background state
       FirebaseMessaging.onMessageOpenedApp.listen((message) {
+        if (message.messageId != null) {
+          NotificationStore.instance.markAsRead(message.messageId!);
+        }
         onTap?.call(message.data);
       });
 
       // App launched from terminated state
       final initial = await fm.getInitialMessage();
       if (initial != null) {
+        if (initial.messageId != null) {
+          NotificationStore.instance.markAsRead(initial.messageId!);
+        }
         onTap?.call(initial.data);
       }
 
@@ -134,6 +159,23 @@ class PushService {
       debugPrint('[Push] ✓ PushService successfully initialized');
     } catch (e, st) {
       debugPrint('[Push] PushService initialization note (app continues): $e\n$st');
+    }
+  }
+
+  /// Re-syncs the device FCM token with the backend upon authentication change
+  Future<void> syncToken({
+    required Future<void> Function(String token, String platform) registerToken,
+  }) async {
+    try {
+      final fm = FirebaseMessaging.instance;
+      final token = await fm.getToken();
+      if (token != null && token.isNotEmpty) {
+        final platform = Platform.isIOS ? 'ios' : 'android';
+        await registerToken(token, platform);
+        debugPrint('[Push] ✓ FCM Token synced for active session');
+      }
+    } catch (e) {
+      debugPrint('[Push] syncToken note: $e');
     }
   }
 

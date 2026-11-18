@@ -1537,6 +1537,8 @@ func AdminVerifyVideo(w http.ResponseWriter, r *http.Request) {
 	newStatus := models.StatusApproved
 	if req.Action == "reject" {
 		newStatus = models.StatusRejected
+	} else if req.Action == "pending" || req.Action == "reset" {
+		newStatus = models.StatusPending
 	}
 
 	// In the pure tier-based monetization model, individual video approvals do NOT credit per-video rewards.

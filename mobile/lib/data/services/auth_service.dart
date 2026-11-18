@@ -72,6 +72,22 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  /// Syncs real-time KYC verification status from backend
+  Future<void> refreshProfile() async {
+    if (_token == null || _currentUser == null) return;
+    try {
+      final kycData = await _apiService.fetchKyc(_token!);
+      if (kycData != null) {
+        final verified = kycData['is_verified'] == true || kycData['is_verified'] == 1;
+        if (_currentUser!.isKycVerified != verified) {
+          _currentUser = _currentUser!.copyWith(isKycVerified: verified);
+          await _persistSession();
+          notifyListeners();
+        }
+      }
+    } catch (_) {}
+  }
+
   Future<bool> login({
     required String identifier,
     required String password,

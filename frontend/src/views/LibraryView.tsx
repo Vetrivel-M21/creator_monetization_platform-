@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Bookmark, Heart, History, Clock, Compass, Play } from 'lucide-react';
+import { Bookmark, Heart, History, Clock, Compass, Play, Film } from 'lucide-react';
 import type { Video } from '../types';
 import { formatDuration } from '../utils/formatters';
+import { toAbsoluteMediaUrl } from '../utils/thumbnail';
 
 interface LibraryViewProps {
   savedVideos: Video[];
@@ -121,12 +122,22 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 className="group cursor-pointer overflow-hidden flex flex-col rounded-2xl bg-[#FFFFFF] border border-[#DCE7F6] hover:border-[#BFDBFE] shadow-sm hover:shadow-md transition-all duration-300"
               >
                 {/* Clean Thumbnail - Duration pill only pinned to bottom-right */}
-                <div className="relative aspect-video bg-slate-100 overflow-hidden">
-                  <img
-                    src={video.thumbnailUrl || video.thumbnail_url}
-                    alt={video.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
-                  />
+                <div className="relative aspect-video bg-[#E0EDFF]/30 overflow-hidden">
+                  {toAbsoluteMediaUrl(video.thumbnailUrl || video.thumbnail_url) ? (
+                    <img
+                      src={toAbsoluteMediaUrl(video.thumbnailUrl || video.thumbnail_url)}
+                      alt={video.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-[#64748B] bg-slate-50">
+                      <Film size={26} className="text-[#94A3B8]" />
+                      <span className="text-[11px] font-medium text-[#94A3B8] mt-1">AURA Media</span>
+                    </div>
+                  )}
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                     <div className="w-12 h-12 rounded-full bg-white text-black flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition-transform">
                       <Play size={20} className="fill-black ml-0.5" />

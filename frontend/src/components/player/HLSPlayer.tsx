@@ -45,6 +45,7 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
   const [isBuffering, setIsBuffering] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // ABR Quality Levels
@@ -53,7 +54,23 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
   const [activeHeight, setActiveHeight] = useState<number | null>(null);
 
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settingsMenuRef = useRef<HTMLDivElement | null>(null);
   const networkRetryCountRef = useRef<number>(0);
+
+  // Close settings popup when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (settingsMenuRef.current && !settingsMenuRef.current.contains(e.target as Node)) {
+        setShowSettings(false);
+      }
+    };
+    if (showSettings) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [showSettings]);
 
   const handleMouseMove = () => {
     setShowControls(true);
@@ -406,6 +423,19 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
     setShowSettings(false);
   };
 
+  const selectSpeed = (speed: number) => {
+    setPlaybackSpeed(speed);
+    if (videoRef.current) {
+      videoRef.current.playbackRate = speed;
+    }
+    setShowSettings(false);
+  };
+
+  const sortedQualityLevels = qualityLevels
+    .map((lvl, originalIndex) => ({ ...lvl, originalIndex }))
+    .filter((lvl, idx, arr) => arr.findIndex((x) => x.height === lvl.height) === idx)
+    .sort((a, b) => b.height - a.height);
+
   const formatTime = (secs: number) => {
     if (isNaN(secs)) return '0:00';
     const m = Math.floor(secs / 60);
@@ -538,52 +568,91 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Quality Selector */}
-              {qualityLevels.length > 0 && (
-                <div className="relative">
-                  <button
-                    onClick={() => setShowSettings(!showSettings)}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-mono text-white transition-colors cursor-pointer"
-                  >
-                    <Settings size={13} />
-                    <span>{currentLevelIndex === -1 ? 'Auto' : `${qualityLevels[currentLevelIndex]?.height}p`}</span>
-                  </button>
+              {/* Settings & Quality Selector */}
+              <div className="relative" ref={settingsMenuRef}>
+                <button
+                  onClick={() => setShowSettings(!showSettings)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-mono text-white transition-colors cursor-pointer"
+                  title="Player Settings & Quality"
+                >
+                  <Settings size={13} className={showSettings ? 'rotate-45 transition-transform' : 'transition-transform'} />
+                  <span>
+                    {qualityLevels.length > 0
+                      ? (currentLevelIndex === -1 ? 'Auto' : `${qualityLevels[currentLevelIndex]?.height}p`)
+                      : (activeHeight ? `${activeHeight}p` : 'Auto')}
+                    {playbackSpeed !== 1 && ` • ${playbackSpeed}x`}
+                  </span>
+                </button>
 
-                  {/* Settings Popup */}
-                  {showSettings && (
-                    <div className="absolute right-0 bottom-9 w-44 p-2 rounded-2xl bg-[#FFFFFF] border border-[#DCE7F6] shadow-2xl z-50 space-y-1 animate-fade-in text-[#0F172A]">
-                      <div className="px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-[#64748B]">
-                        Resolution (ABR)
+                {/* Settings Popup */}
+                {showSettings && (
+                  <div className="absolute right-0 bottom-9 w-52 max-h-80 overflow-y-auto p-2.5 rounded-2xl bg-[#FFFFFF] border border-[#DCE7F6] shadow-2xl z-50 space-y-2 animate-fade-in text-[#0F172A]">
+                    {/* Quality Section */}
+                    <div>
+                      <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-[#64748B] flex items-center justify-between">
+                        <span>Quality (ABR)</span>
+                        <span className="text-[9px] text-emerald-600 font-bold">HLS Live</span>
                       </div>
-                      <button
-                        onClick={() => selectQuality(-1)}
-                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition-colors cursor-pointer ${
-                          currentLevelIndex === -1 ? 'bg-[#E0EDFF] text-[#1D4ED8] font-bold' : 'text-[#0F172A] hover:bg-[#F0F6FF]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <Sparkles size={12} />
-                          <span>Auto (Adaptive)</span>
-                        </div>
-                        {currentLevelIndex === -1 && <Check size={13} />}
-                      </button>
+                      
+                      {qualityLevels.length > 0 ? (
+                        <div className="space-y-0.5 mt-0.5">
+                          <button
+                            onClick={() => selectQuality(-1)}
+                            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition-colors cursor-pointer ${
+                              currentLevelIndex === -1 ? 'bg-[#E0EDFF] text-[#1D4ED8] font-bold' : 'text-[#0F172A] hover:bg-[#F0F6FF]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <Sparkles size={12} className="text-[#2563EB]" />
+                              <span>Auto (Adaptive)</span>
+                            </div>
+                            {currentLevelIndex === -1 && <Check size={13} className="text-[#2563EB]" />}
+                          </button>
 
-                      {qualityLevels.map((lvl, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => selectQuality(idx)}
-                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-mono transition-colors cursor-pointer ${
-                            currentLevelIndex === idx ? 'bg-[#E0EDFF] text-[#1D4ED8] font-bold' : 'text-[#0F172A] hover:bg-[#F0F6FF]'
-                          }`}
-                        >
-                          <span>{lvl.height}p ({Math.round(lvl.bitrate / 1000)}k)</span>
-                          {currentLevelIndex === idx && <Check size={13} />}
-                        </button>
-                      ))}
+                          {sortedQualityLevels.map((lvl) => (
+                            <button
+                              key={lvl.originalIndex}
+                              onClick={() => selectQuality(lvl.originalIndex)}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-mono transition-colors cursor-pointer ${
+                                currentLevelIndex === lvl.originalIndex ? 'bg-[#E0EDFF] text-[#1D4ED8] font-bold' : 'text-[#0F172A] hover:bg-[#F0F6FF]'
+                              }`}
+                            >
+                              <span>{lvl.height}p ({Math.round(lvl.bitrate / 1000)} kbps)</span>
+                              {currentLevelIndex === lvl.originalIndex && <Check size={13} className="text-[#2563EB]" />}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="px-2.5 py-1.5 text-xs text-slate-500 bg-[#F8FAFC] rounded-xl flex items-center justify-between">
+                          <span>Original (Direct Stream)</span>
+                          <Check size={13} className="text-[#2563EB]" />
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              )}
+
+                    <div className="border-t border-[#DCE7F6] pt-1.5">
+                      <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-[#64748B]">
+                        Playback Speed
+                      </div>
+                      <div className="grid grid-cols-3 gap-1 mt-0.5">
+                        {[0.5, 0.75, 1, 1.25, 1.5, 2].map((spd) => (
+                          <button
+                            key={spd}
+                            onClick={() => selectSpeed(spd)}
+                            className={`px-2 py-1 rounded-lg text-xs font-mono transition-colors cursor-pointer text-center ${
+                              playbackSpeed === spd
+                                ? 'bg-[#E0EDFF] text-[#1D4ED8] font-bold'
+                                : 'text-[#0F172A] hover:bg-[#F0F6FF]'
+                            }`}
+                          >
+                            {spd === 1 ? '1x Normal' : `${spd}x`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Fullscreen Toggle */}
               <button

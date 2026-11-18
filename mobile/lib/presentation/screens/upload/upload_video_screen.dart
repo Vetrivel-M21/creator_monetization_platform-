@@ -97,7 +97,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
         });
       }
     } catch (e) {
-      setState(() => _errorMessage = 'Failed to pick video file: $e');
+      setState(() => _errorMessage = 'Media access error: Please allow photo & video permissions in device settings to pick video files ($e)');
     }
   }
 
@@ -115,7 +115,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
         });
       }
     } catch (e) {
-      setState(() => _errorMessage = 'Failed to pick thumbnail: $e');
+      setState(() => _errorMessage = 'Media access error: Please allow photo & media permissions to select a thumbnail ($e)');
     }
   }
 
