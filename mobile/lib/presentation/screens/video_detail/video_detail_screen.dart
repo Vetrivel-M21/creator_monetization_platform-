@@ -367,10 +367,11 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
     }
 
     final oldController = _playerController;
+    final previousQuality = _selectedQuality;
     final currentPos = oldController?.value.position ?? Duration.zero;
     final wasPlaying = oldController?.value.isPlaying ?? false;
 
-    // Update selection indicator without destroying the active video view
+    // Temporarily update selection indicator
     setState(() {
       _selectedQuality = option;
     });
@@ -378,7 +379,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
     try {
       final newController = VideoPlayerController.networkUrl(Uri.parse(option.url));
 
-      // 1. Initialize and buffer new stream in background
+      // 1. Initialize and buffer new stream
       await newController.initialize();
       await newController.seekTo(currentPos);
       await newController.setPlaybackSpeed(_playbackSpeed);
@@ -394,23 +395,28 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
         }
       });
 
-      // 2. Seamlessly swap controllers without blank screen or thumbnail flicker
+      // 2. Seamlessly swap controllers without blank screen or flicker
       if (mounted) {
         setState(() {
           _playerController = newController;
+          _selectedQuality = option;
+          _activeStreamUrl = option.url;
           _isPlayerInitialized = true;
           _hasPlayerError = false;
         });
       }
 
-      // 3. Safely dispose previous controller after new one is actively playing
+      // 3. Safely dispose previous controller
       await oldController?.dispose();
     } catch (e) {
       debugPrint('[VideoDetail] Failed switching quality to ${option.label}: $e');
       if (mounted) {
+        setState(() {
+          _selectedQuality = previousQuality;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not switch to ${option.label}. Resuming playback.'),
+            content: Text('Could not switch to ${option.label}. Resuming current playback.'),
             backgroundColor: Colors.redAccent,
             duration: const Duration(seconds: 2),
           ),
@@ -429,6 +435,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
   void _showSettingsBottomSheet() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -437,12 +444,16 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
         return StatefulBuilder(
           builder: (modalContext, setModalState) {
             return SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * (_isFullscreen ? 0.88 : 0.70),
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                     // Drag Handle
                     Center(
                       child: Container(
@@ -665,7 +676,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
                   ],
                 ),
               ),
-            );
+            ),
+          );
           },
         );
       },

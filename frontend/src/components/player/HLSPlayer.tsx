@@ -45,6 +45,7 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
   const [isBuffering, setIsBuffering] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'quality' | 'speed'>('quality');
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isHls, setIsHls] = useState<boolean>(false);
@@ -136,6 +137,14 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
       hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
         setQualityLevels(data.levels);
         setIsBuffering(false);
+        if (data.levels && data.levels.length > 0) {
+          const initialLevel = (hls.currentLevel >= 0 && data.levels[hls.currentLevel]) 
+            ? data.levels[hls.currentLevel] 
+            : data.levels[0];
+          if (initialLevel) {
+            setActiveHeight(initialLevel.height);
+          }
+        }
         if (autoPlay) {
           const p = video.play();
           if (p !== undefined) {
@@ -418,21 +427,29 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
 
   const selectQuality = (index: number) => {
     if (!hlsRef.current) return;
+    
+    // Setting currentLevel forces immediate level switch and buffer flush in Hls.js
     hlsRef.current.currentLevel = index;
-    if (index === -1) {
-      hlsRef.current.nextLevel = -1;
-      hlsRef.current.loadLevel = -1;
-    } else {
-      hlsRef.current.nextLevel = index;
-      hlsRef.current.loadLevel = index;
-    }
     setCurrentLevelIndex(index);
+
     if (index >= 0 && qualityLevels[index]) {
       setActiveHeight(qualityLevels[index].height);
     } else {
-      setActiveHeight(null);
+      const activeLvl = hlsRef.current.levels[hlsRef.current.currentLevel];
+      setActiveHeight(activeLvl ? activeLvl.height : null);
     }
-    setShowSettings(false);
+
+    // Refresh decoder frame immediately if paused or video has short buffered segments
+    if (videoRef.current) {
+      try {
+        const cur = videoRef.current.currentTime;
+        videoRef.current.currentTime = cur;
+      } catch (_) {}
+    }
+
+    setTimeout(() => {
+      setShowSettings(false);
+    }, 200);
   };
 
   const selectSpeed = (speed: number) => {
@@ -440,7 +457,9 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
     if (videoRef.current) {
       videoRef.current.playbackRate = speed;
     }
-    setShowSettings(false);
+    setTimeout(() => {
+      setShowSettings(false);
+    }, 200);
   };
 
   const sortedQualityLevels = qualityLevels
@@ -608,76 +627,111 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
 
                 {/* Settings Popup */}
                 {showSettings && (
-                  <div className="absolute right-0 bottom-9 w-52 max-h-80 overflow-y-auto p-2.5 rounded-2xl bg-[#FFFFFF] border border-[#DCE7F6] shadow-2xl z-50 space-y-2 animate-fade-in text-[#0F172A]">
-                    {/* Quality Section */}
-                    <div>
-                      <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-[#64748B] flex items-center justify-between">
-                        <span>Quality (ABR)</span>
-                        <span className={`text-[9px] font-bold ${isHls ? 'text-emerald-600' : 'text-amber-600'}`}>
-                          {isHls ? 'HLS Live' : 'Single Stream'}
-                        </span>
-                      </div>
-                      
-                      {isHls && qualityLevels.length > 0 ? (
-                        <div className="space-y-0.5 mt-0.5">
-                          <button
-                            onClick={() => selectQuality(-1)}
-                            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition-colors cursor-pointer ${
-                              currentLevelIndex === -1 ? 'bg-[#E0EDFF] text-[#1D4ED8] font-bold' : 'text-[#0F172A] hover:bg-[#F0F6FF]'
-                            }`}
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <Sparkles size={12} className="text-[#2563EB]" />
-                              <span>Auto (Adaptive)</span>
-                            </div>
-                            {currentLevelIndex === -1 && <Check size={13} className="text-[#2563EB]" />}
-                          </button>
-
-                          {sortedQualityLevels.map((lvl) => (
-                            <button
-                              key={lvl.originalIndex}
-                              onClick={() => selectQuality(lvl.originalIndex)}
-                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-mono transition-colors cursor-pointer ${
-                                currentLevelIndex === lvl.originalIndex ? 'bg-[#E0EDFF] text-[#1D4ED8] font-bold' : 'text-[#0F172A] hover:bg-[#F0F6FF]'
-                              }`}
-                            >
-                              <span>{lvl.height}p ({Math.round(lvl.bitrate / 1000)} kbps)</span>
-                              {currentLevelIndex === lvl.originalIndex && <Check size={13} className="text-[#2563EB]" />}
-                            </button>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="px-2.5 py-2 text-[11px] text-[#475569] bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl space-y-1">
-                          <div className="flex items-center justify-between font-semibold text-[#1E293B]">
-                            <span>Original Source (Direct MP4)</span>
-                            <Check size={13} className="text-[#2563EB]" />
-                          </div>
-                          <p className="text-[10px] text-[#64748B] leading-tight">
-                            Multi-bitrate ladders (1080p to 144p) are active on HLS transcoded videos.
-                          </p>
-                        </div>
-                      )}
+                  <div className="absolute right-0 bottom-10 w-56 max-h-[calc(100%-3rem)] flex flex-col p-2.5 rounded-2xl bg-[#FFFFFF] border border-[#DCE7F6] shadow-2xl z-50 animate-fade-in text-[#0F172A] overflow-hidden">
+                    {/* Header Tabs: Quality & Speed */}
+                    <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-xl mb-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setSettingsTab('quality')}
+                        className={`flex-1 py-1 text-[11px] font-semibold rounded-lg transition-colors cursor-pointer text-center ${
+                          settingsTab === 'quality'
+                            ? 'bg-white text-[#2563EB] shadow-xs'
+                            : 'text-[#64748B] hover:text-[#0F172A]'
+                        }`}
+                      >
+                        Quality {currentLevelIndex === -1 ? '(Auto)' : `(${qualityLevels[currentLevelIndex]?.height}p)`}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSettingsTab('speed')}
+                        className={`flex-1 py-1 text-[11px] font-semibold rounded-lg transition-colors cursor-pointer text-center ${
+                          settingsTab === 'speed'
+                            ? 'bg-white text-[#2563EB] shadow-xs'
+                            : 'text-[#64748B] hover:text-[#0F172A]'
+                        }`}
+                      >
+                        Speed ({playbackSpeed}x)
+                      </button>
                     </div>
 
-                    <div className="border-t border-[#DCE7F6] pt-1.5">
-                      <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-[#64748B]">
-                        Playback Speed
-                      </div>
-                      <div className="grid grid-cols-3 gap-1 mt-0.5">
-                        {[0.5, 0.75, 1, 1.25, 1.5, 2].map((spd) => (
-                          <button
-                            key={spd}
-                            onClick={() => selectSpeed(spd)}
-                            className={`px-2 py-1 rounded-lg text-xs font-mono transition-colors cursor-pointer text-center ${
-                              playbackSpeed === spd
-                                ? 'bg-[#E0EDFF] text-[#1D4ED8] font-bold'
-                                : 'text-[#0F172A] hover:bg-[#F0F6FF]'
-                            }`}
-                          >
-                            {spd === 1 ? '1x Normal' : `${spd}x`}
-                          </button>
-                        ))}
-                      </div>
+                    {/* Scrollable Tab Content */}
+                    <div className="overflow-y-auto overscroll-contain space-y-1 pr-0.5">
+                      {settingsTab === 'quality' && (
+                        <div>
+                          <div className="px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider text-[#64748B] flex items-center justify-between mb-1">
+                            <span>Resolution</span>
+                            <span className={`text-[9px] font-bold ${isHls ? 'text-emerald-600' : 'text-amber-600'}`}>
+                              {isHls ? (currentLevelIndex === -1 ? 'Adaptive Auto' : 'Manual Lock') : 'Single Stream'}
+                            </span>
+                          </div>
+
+                          {isHls && qualityLevels.length > 0 ? (
+                            <div className="space-y-1">
+                              <button
+                                type="button"
+                                onClick={() => selectQuality(-1)}
+                                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition-colors cursor-pointer ${
+                                  currentLevelIndex === -1 ? 'bg-[#E0EDFF] text-[#1D4ED8] font-bold' : 'text-[#0F172A] hover:bg-[#F0F6FF]'
+                                }`}
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <Sparkles size={12} className="text-[#2563EB]" />
+                                  <span>Auto (Adaptive)</span>
+                                </div>
+                                {currentLevelIndex === -1 && <Check size={13} className="text-[#2563EB]" />}
+                              </button>
+
+                              {sortedQualityLevels.map((lvl) => (
+                                <button
+                                  type="button"
+                                  key={lvl.originalIndex}
+                                  onClick={() => selectQuality(lvl.originalIndex)}
+                                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-mono transition-colors cursor-pointer ${
+                                    currentLevelIndex === lvl.originalIndex ? 'bg-[#E0EDFF] text-[#1D4ED8] font-bold' : 'text-[#0F172A] hover:bg-[#F0F6FF]'
+                                  }`}
+                                >
+                                  <span>{lvl.height}p ({Math.round(lvl.bitrate / 1000)} kbps)</span>
+                                  {currentLevelIndex === lvl.originalIndex && <Check size={13} className="text-[#2563EB]" />}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="px-2.5 py-2 text-[11px] text-[#475569] bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl space-y-1">
+                              <div className="flex items-center justify-between font-semibold text-[#1E293B]">
+                                <span>Original Source (Direct MP4)</span>
+                                <Check size={13} className="text-[#2563EB]" />
+                              </div>
+                              <p className="text-[10px] text-[#64748B] leading-tight">
+                                Multi-bitrate ladders are active on HLS transcoded videos.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {settingsTab === 'speed' && (
+                        <div>
+                          <div className="px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider text-[#64748B] mb-1">
+                            Playback Speed
+                          </div>
+                          <div className="grid grid-cols-3 gap-1">
+                            {[0.5, 0.75, 1, 1.25, 1.5, 2].map((spd) => (
+                              <button
+                                type="button"
+                                key={spd}
+                                onClick={() => selectSpeed(spd)}
+                                className={`px-2 py-1.5 rounded-lg text-xs font-mono transition-colors cursor-pointer text-center ${
+                                  playbackSpeed === spd
+                                    ? 'bg-[#E0EDFF] text-[#1D4ED8] font-bold'
+                                    : 'text-[#0F172A] hover:bg-[#F0F6FF]'
+                                }`}
+                              >
+                                {spd === 1 ? '1x Normal' : `${spd}x`}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
