@@ -76,6 +76,28 @@ var StandardABRLadder = []LadderRung{
 		Profile:      "baseline",
 		Level:        "3.0",
 	},
+	{
+		Name:         "240p",
+		Width:        426,
+		Height:       240,
+		VideoBitrate: 400000, // ~0.4 Mbps
+		MaxRate:      440000,
+		BufSize:      600000,
+		AudioBitrate: 64000,
+		Profile:      "baseline",
+		Level:        "2.1",
+	},
+	{
+		Name:         "144p",
+		Width:        256,
+		Height:       144,
+		VideoBitrate: 200000, // ~0.2 Mbps
+		MaxRate:      220000,
+		BufSize:      300000,
+		AudioBitrate: 64000,
+		Profile:      "baseline",
+		Level:        "1.3",
+	},
 }
 
 // VideoMetadata contains probed metadata for a video.

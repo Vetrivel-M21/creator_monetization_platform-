@@ -47,6 +47,7 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
   const [showSettings, setShowSettings] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isHls, setIsHls] = useState<boolean>(false);
 
   // ABR Quality Levels
   const [qualityLevels, setQualityLevels] = useState<Level[]>([]);
@@ -91,6 +92,9 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
     setErrorMsg(null);
     setIsBuffering(true);
     networkRetryCountRef.current = 0;
+    setCurrentLevelIndex(-1);
+    setActiveHeight(null);
+    setQualityLevels([]);
 
     // Ensure absolute HTTPS URL (never relative, never http on https page)
     let activeSrc = src.trim();
@@ -102,6 +106,7 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
     }
 
     const isHlsStream = activeSrc.includes('.m3u8') || activeSrc.includes('/api/playback/') || activeSrc.includes('/playback/');
+    setIsHls(isHlsStream);
 
     // Destroy existing Hls instance
     if (hlsRef.current) {
@@ -414,6 +419,13 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
   const selectQuality = (index: number) => {
     if (!hlsRef.current) return;
     hlsRef.current.currentLevel = index;
+    if (index === -1) {
+      hlsRef.current.nextLevel = -1;
+      hlsRef.current.loadLevel = -1;
+    } else {
+      hlsRef.current.nextLevel = index;
+      hlsRef.current.loadLevel = index;
+    }
     setCurrentLevelIndex(index);
     if (index >= 0 && qualityLevels[index]) {
       setActiveHeight(qualityLevels[index].height);
@@ -486,10 +498,18 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full bg-black/60 border border-white/10 text-[10px] font-mono text-emerald-400 font-semibold flex items-center gap-1.5 backdrop-blur-md">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              {activeHeight ? `${activeHeight}p` : 'HLS ABR'}
+              {isHls
+                ? (activeHeight ? `${activeHeight}p` : 'HLS ABR')
+                : (activeHeight ? `${activeHeight}p` : 'Direct MP4')}
             </span>
-            {currentLevelIndex === -1 && (
+            {isHls && currentLevelIndex === -1 && (
               <span className="text-[10px] text-slate-400 font-mono">Seamless Auto</span>
+            )}
+            {isHls && currentLevelIndex !== -1 && (
+              <span className="text-[10px] text-blue-400 font-mono font-semibold">Locked</span>
+            )}
+            {!isHls && (
+              <span className="text-[10px] text-amber-400 font-mono">Direct Source</span>
             )}
           </div>
         </div>
@@ -577,9 +597,11 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
                 >
                   <Settings size={13} className={showSettings ? 'rotate-45 transition-transform' : 'transition-transform'} />
                   <span>
-                    {qualityLevels.length > 0
-                      ? (currentLevelIndex === -1 ? 'Auto' : `${qualityLevels[currentLevelIndex]?.height}p`)
-                      : (activeHeight ? `${activeHeight}p` : 'Auto')}
+                    {isHls
+                      ? (qualityLevels.length > 0
+                          ? (currentLevelIndex === -1 ? 'Auto' : `${qualityLevels[currentLevelIndex]?.height}p`)
+                          : (activeHeight ? `${activeHeight}p` : 'Auto'))
+                      : 'Source'}
                     {playbackSpeed !== 1 && ` • ${playbackSpeed}x`}
                   </span>
                 </button>
@@ -591,10 +613,12 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
                     <div>
                       <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-[#64748B] flex items-center justify-between">
                         <span>Quality (ABR)</span>
-                        <span className="text-[9px] text-emerald-600 font-bold">HLS Live</span>
+                        <span className={`text-[9px] font-bold ${isHls ? 'text-emerald-600' : 'text-amber-600'}`}>
+                          {isHls ? 'HLS Live' : 'Single Stream'}
+                        </span>
                       </div>
                       
-                      {qualityLevels.length > 0 ? (
+                      {isHls && qualityLevels.length > 0 ? (
                         <div className="space-y-0.5 mt-0.5">
                           <button
                             onClick={() => selectQuality(-1)}
@@ -623,9 +647,14 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
                           ))}
                         </div>
                       ) : (
-                        <div className="px-2.5 py-1.5 text-xs text-slate-500 bg-[#F8FAFC] rounded-xl flex items-center justify-between">
-                          <span>Original (Direct Stream)</span>
-                          <Check size={13} className="text-[#2563EB]" />
+                        <div className="px-2.5 py-2 text-[11px] text-[#475569] bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl space-y-1">
+                          <div className="flex items-center justify-between font-semibold text-[#1E293B]">
+                            <span>Original Source (Direct MP4)</span>
+                            <Check size={13} className="text-[#2563EB]" />
+                          </div>
+                          <p className="text-[10px] text-[#64748B] leading-tight">
+                            Multi-bitrate ladders (1080p to 144p) are active on HLS transcoded videos.
+                          </p>
                         </div>
                       )}
                     </div>

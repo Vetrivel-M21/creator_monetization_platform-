@@ -177,7 +177,17 @@ func (s *TranscoderService) createDirectFallbackPlaylist(outputDir, videoID stri
 	content := fmt.Sprintf(`#EXTM3U
 #EXT-X-VERSION:7
 #EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080,CODECS="avc1.640028,mp4a.40.2"
-/data/masters/%s.mp4
-`, videoID)
+/api/playback/%s/master.mp4
+#EXT-X-STREAM-INF:BANDWIDTH=2800000,RESOLUTION=1280x720,CODECS="avc1.4d401f,mp4a.40.2"
+/api/playback/%s/master.mp4
+#EXT-X-STREAM-INF:BANDWIDTH=1200000,RESOLUTION=854x480,CODECS="avc1.4d401f,mp4a.40.2"
+/api/playback/%s/master.mp4
+#EXT-X-STREAM-INF:BANDWIDTH=600000,RESOLUTION=640x360,CODECS="avc1.42c01e,mp4a.40.2"
+/api/playback/%s/master.mp4
+#EXT-X-STREAM-INF:BANDWIDTH=400000,RESOLUTION=426x240,CODECS="avc1.42c01e,mp4a.40.2"
+/api/playback/%s/master.mp4
+#EXT-X-STREAM-INF:BANDWIDTH=200000,RESOLUTION=256x144,CODECS="avc1.42c01e,mp4a.40.2"
+/api/playback/%s/master.mp4
+`, videoID, videoID, videoID, videoID, videoID, videoID)
 	_ = os.WriteFile(filepath.Join(outputDir, "master.m3u8"), []byte(content), 0644)
 }

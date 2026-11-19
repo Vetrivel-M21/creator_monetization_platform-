@@ -309,7 +309,13 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
                 final kbps = bitrate != null ? ' • ${(bitrate / 1000).round()} kbps' : '';
                 final desc = qualityHeight != null && qualityHeight >= 1080
                     ? 'Full HD$kbps'
-                    : (qualityHeight != null && qualityHeight >= 720 ? 'HD$kbps' : 'Standard$kbps');
+                    : (qualityHeight != null && qualityHeight >= 720
+                        ? 'HD$kbps'
+                        : (qualityHeight != null && qualityHeight >= 480
+                            ? 'SD$kbps'
+                            : (qualityHeight != null && qualityHeight >= 240
+                                ? 'Low Data$kbps'
+                                : 'Data Saver (144p)$kbps')));
 
                 parsed.add(VideoQualityOption(
                   label: label,
@@ -364,20 +370,20 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
     final currentPos = oldController?.value.position ?? Duration.zero;
     final wasPlaying = oldController?.value.isPlaying ?? false;
 
+    // Update selection indicator without destroying the active video view
     setState(() {
       _selectedQuality = option;
-      _isPlayerInitialized = false;
     });
 
     try {
-      await oldController?.dispose();
       final newController = VideoPlayerController.networkUrl(Uri.parse(option.url));
-      _playerController = newController;
 
+      // 1. Initialize and buffer new stream in background
       await newController.initialize();
       await newController.seekTo(currentPos);
       await newController.setPlaybackSpeed(_playbackSpeed);
       await newController.setVolume(_isMuted ? 0.0 : 1.0);
+
       if (wasPlaying) {
         await newController.play();
       }
@@ -388,16 +394,27 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
         }
       });
 
+      // 2. Seamlessly swap controllers without blank screen or thumbnail flicker
       if (mounted) {
         setState(() {
+          _playerController = newController;
           _isPlayerInitialized = true;
           _hasPlayerError = false;
         });
       }
+
+      // 3. Safely dispose previous controller after new one is actively playing
+      await oldController?.dispose();
     } catch (e) {
-      debugPrint('[VideoDetail] Failed switching quality: $e');
+      debugPrint('[VideoDetail] Failed switching quality to ${option.label}: $e');
       if (mounted) {
-        _initializePlayer();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not switch to ${option.label}. Resuming playback.'),
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
     }
   }
