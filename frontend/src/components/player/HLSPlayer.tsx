@@ -55,6 +55,8 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
   const [currentLevelIndex, setCurrentLevelIndex] = useState<number>(-1); // -1 = Auto
   const [activeHeight, setActiveHeight] = useState<number | null>(null);
 
+  const masterSrcRef = useRef<string>('');
+  const availableQualitiesRef = useRef<Level[]>([]);
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const settingsMenuRef = useRef<HTMLDivElement | null>(null);
   const networkRetryCountRef = useRef<number>(0);
@@ -105,6 +107,7 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
     if (typeof window !== 'undefined' && window.location.protocol === 'https:' && activeSrc.startsWith('http://')) {
       activeSrc = activeSrc.replace('http://', 'https://');
     }
+    masterSrcRef.current = activeSrc;
 
     const isHlsStream = activeSrc.includes('.m3u8') || activeSrc.includes('/api/playback/') || activeSrc.includes('/playback/');
     setIsHls(isHlsStream);
@@ -135,7 +138,14 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
-        setQualityLevels(data.levels);
+        if (data.levels && data.levels.length > 1) {
+          availableQualitiesRef.current = data.levels;
+          setQualityLevels(data.levels);
+        } else if (availableQualitiesRef.current.length > 0) {
+          setQualityLevels(availableQualitiesRef.current);
+        } else if (data.levels) {
+          setQualityLevels(data.levels);
+        }
         setIsBuffering(false);
         if (data.levels && data.levels.length > 0) {
           const initialLevel = (hls.currentLevel >= 0 && data.levels[hls.currentLevel]) 
@@ -426,26 +436,62 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
   };
 
   const selectQuality = (index: number) => {
-    if (!hlsRef.current) return;
+    if (!hlsRef.current || !videoRef.current) return;
     
-    // Setting currentLevel forces immediate level switch and buffer flush in Hls.js
-    hlsRef.current.currentLevel = index;
+    const video = videoRef.current;
+    const curTime = video.currentTime;
+    const wasPlaying = !video.paused;
+
     setCurrentLevelIndex(index);
 
-    if (index >= 0 && qualityLevels[index]) {
-      setActiveHeight(qualityLevels[index].height);
+    const activeLevels = availableQualitiesRef.current.length > 0 
+      ? availableQualitiesRef.current 
+      : qualityLevels;
+
+    if (index === -1) {
+      // Auto (Adaptive): reload master playlist with full ABR ladder
+      setActiveHeight(null);
+      hlsRef.current.currentLevel = -1;
+      if (masterSrcRef.current && masterSrcRef.current !== hlsRef.current.url) {
+        hlsRef.current.loadSource(masterSrcRef.current);
+      }
     } else {
-      const activeLvl = hlsRef.current.levels[hlsRef.current.currentLevel];
-      setActiveHeight(activeLvl ? activeLvl.height : null);
+      const targetLevel = activeLevels[index];
+      if (targetLevel) {
+        setActiveHeight(targetLevel.height);
+        
+        // ARMSS-OTT pattern: stream directly from that rendition's variant playlist
+        const renditionUrl = (targetLevel.url && targetLevel.url[0]) ? targetLevel.url[0] : '';
+        if (renditionUrl) {
+          hlsRef.current.loadSource(renditionUrl);
+        } else {
+          hlsRef.current.currentLevel = index;
+        }
+      }
     }
 
-    // Refresh decoder frame immediately if paused or video has short buffered segments
-    if (videoRef.current) {
+    // Seamlessly restore playback time without stutter
+    const restoreTime = () => {
       try {
-        const cur = videoRef.current.currentTime;
-        videoRef.current.currentTime = cur;
+        if (curTime > 0) {
+          video.currentTime = curTime;
+        }
+        if (wasPlaying) {
+          video.play().catch(() => {});
+        }
       } catch (_) {}
-    }
+    };
+
+    hlsRef.current.once(Hls.Events.LEVEL_LOADED, restoreTime);
+
+    // Immediate micro-nudge for video decoder if paused
+    try {
+      if (curTime > 0.01) {
+        video.currentTime = curTime - 0.001;
+      } else if (video.duration > 0.1) {
+        video.currentTime = curTime + 0.005;
+      }
+    } catch (_) {}
 
     setTimeout(() => {
       setShowSettings(false);

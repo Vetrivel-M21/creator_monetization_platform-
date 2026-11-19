@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -348,7 +349,8 @@ func ServeSegmentFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetPath := filepath.Join("data", "hls", videoID, filename)
+	resolvedFilename := resolveRenditionFilename(videoID, filename)
+	targetPath := filepath.Join("data", "hls", videoID, resolvedFilename)
 	if _, err := os.Stat(targetPath); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
@@ -523,4 +525,86 @@ func rewriteExtXMapTag(line, videoID, token, baseURL string) string {
 	}
 	newURI := fmt.Sprintf(`%s/api/playback/%s/%s%s`, baseURL, videoID, initFile, tokenParam)
 	return line[:start] + fmt.Sprintf(`URI="%s"`, newURI) + line[start+5+end+1:]
+}
+
+// resolveRenditionFilename resolves resolution aliases (e.g. "720p.m3u8", "1080p.m3u8", "480p.m3u8", "360p.m3u8")
+// to the actual variant stream playlist file (e.g. "stream_0.m3u8") generated for that video ladder.
+func resolveRenditionFilename(videoID, filename string) string {
+	clean := strings.ToLower(filename)
+	if !strings.HasSuffix(clean, ".m3u8") || clean == "master.m3u8" {
+		return filename
+	}
+
+	// If direct file exists as requested (e.g. "stream_0.m3u8"), return directly
+	directPath := filepath.Join("data", "hls", videoID, filename)
+	if _, err := os.Stat(directPath); err == nil {
+		return filename
+	}
+
+	// Extract target height e.g. "720p.m3u8" -> 720
+	base := strings.TrimSuffix(clean, ".m3u8")
+	base = strings.TrimSuffix(base, "p")
+	targetHeight, err := strconv.Atoi(base)
+	if err != nil || targetHeight <= 0 {
+		return filename
+	}
+
+	masterPath := filepath.Join("data", "hls", videoID, "master.m3u8")
+	raw, err := os.ReadFile(masterPath)
+	if err != nil {
+		return filename
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(raw))
+	type streamEntry struct {
+		file   string
+		height int
+	}
+	var entries []streamEntry
+	var currentHeight int
+	resRegex := regexp.MustCompile(`RESOLUTION=\d+x(\d+)`)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "#EXT-X-STREAM-INF:") {
+			if match := resRegex.FindStringSubmatch(line); len(match) > 1 {
+				h, _ := strconv.Atoi(match[1])
+				currentHeight = h
+			}
+		} else if !strings.HasPrefix(line, "#") && strings.HasSuffix(line, ".m3u8") {
+			entries = append(entries, streamEntry{file: line, height: currentHeight})
+			currentHeight = 0
+		}
+	}
+
+	if len(entries) == 0 {
+		return filename
+	}
+
+	// Exact match first
+	for _, entry := range entries {
+		if entry.height == targetHeight {
+			return entry.file
+		}
+	}
+
+	// Closest height fallback (e.g. 1080p requested -> closest highest available 720p)
+	closest := entries[0]
+	minDiff := targetHeight - closest.height
+	if minDiff < 0 {
+		minDiff = -minDiff
+	}
+
+	for _, entry := range entries[1:] {
+		diff := targetHeight - entry.height
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff < minDiff {
+			minDiff = diff
+			closest = entry
+		}
+	}
+
+	return closest.file
 }

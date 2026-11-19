@@ -211,7 +211,11 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
 
     final targetUrl = ApiConstants.toAbsoluteUrl(urls[index]);
     final uri = Uri.parse(targetUrl);
-    final controller = VideoPlayerController.networkUrl(uri);
+    final controller = VideoPlayerController.networkUrl(
+      uri,
+      formatHint: targetUrl.contains('.m3u8') ? VideoFormat.hls : VideoFormat.other,
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+    );
     _playerController = controller;
 
     controller.initialize().then((_) {
@@ -377,7 +381,11 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with WidgetsBindi
     });
 
     try {
-      final newController = VideoPlayerController.networkUrl(Uri.parse(option.url));
+      final newController = VideoPlayerController.networkUrl(
+        Uri.parse(option.url),
+        formatHint: option.url.contains('.m3u8') ? VideoFormat.hls : VideoFormat.other,
+        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+      );
 
       // 1. Initialize and buffer new stream
       await newController.initialize();
