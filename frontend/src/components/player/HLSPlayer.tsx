@@ -79,11 +79,11 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
   const handleMouseMove = () => {
     setShowControls(true);
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-    if (isPlaying) {
+    if (isPlaying && !showSettings) {
       controlsTimeoutRef.current = setTimeout(() => {
         setShowControls(false);
         setShowSettings(false);
-      }, 3000);
+      }, 3500);
     }
   };
 
@@ -673,7 +673,10 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
 
                 {/* Settings Popup */}
                 {showSettings && (
-                  <div className="absolute right-0 bottom-10 w-56 max-h-[calc(100%-3rem)] flex flex-col p-2.5 rounded-2xl bg-[#FFFFFF] border border-[#DCE7F6] shadow-2xl z-50 animate-fade-in text-[#0F172A] overflow-hidden">
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute right-0 bottom-full mb-2 w-64 max-h-[175px] sm:max-h-[240px] flex flex-col p-2.5 rounded-2xl bg-[#FFFFFF] border border-[#DCE7F6] shadow-2xl z-50 animate-fade-in text-[#0F172A]"
+                  >
                     {/* Header Tabs: Quality & Speed */}
                     <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-xl mb-2 shrink-0">
                       <button
@@ -701,7 +704,7 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
                     </div>
 
                     {/* Scrollable Tab Content */}
-                    <div className="overflow-y-auto overscroll-contain space-y-1 pr-0.5">
+                    <div className="overflow-y-auto overscroll-contain space-y-1 pr-1 flex-1 min-h-0">
                       {settingsTab === 'quality' && (
                         <div>
                           <div className="px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider text-[#64748B] flex items-center justify-between mb-1">
