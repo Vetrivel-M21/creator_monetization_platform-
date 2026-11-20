@@ -98,6 +98,7 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
     setCurrentLevelIndex(-1);
     setActiveHeight(null);
     setQualityLevels([]);
+    availableQualitiesRef.current = [];
 
     // Ensure absolute HTTPS URL (never relative, never http on https page)
     let activeSrc = src.trim();
@@ -125,6 +126,9 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
         backBufferLength: 30,
         enableWorker: true,
         lowLatencyMode: false,
+        // FIX: start ABR from the first request — no forced startLevel:0 so the
+        // player picks the rung that fits the current bandwidth immediately.
+        startLevel: -1,
         xhrSetup: (xhr, url) => {
           if (typeof window !== 'undefined' && window.location.protocol === 'https:' && url.startsWith('http://')) {
             const secureUrl = url.replace('http://', 'https://');
@@ -138,23 +142,21 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
-        if (data.levels && data.levels.length > 1) {
+        // FIX: removed the `data.levels.length > 1` guard — always populate quality
+        // levels so single-rendition HLS streams still show the quality panel.
+        if (data.levels && data.levels.length > 0) {
           availableQualitiesRef.current = data.levels;
           setQualityLevels(data.levels);
-        } else if (availableQualitiesRef.current.length > 0) {
-          setQualityLevels(availableQualitiesRef.current);
-        } else if (data.levels) {
-          setQualityLevels(data.levels);
-        }
-        setIsBuffering(false);
-        if (data.levels && data.levels.length > 0) {
-          const initialLevel = (hls.currentLevel >= 0 && data.levels[hls.currentLevel]) 
-            ? data.levels[hls.currentLevel] 
-            : data.levels[0];
+
+          // Show the level that HLS.js ABR has already chosen
+          const startIdx = hls.currentLevel >= 0 ? hls.currentLevel : 0;
+          const initialLevel = data.levels[startIdx];
           if (initialLevel) {
             setActiveHeight(initialLevel.height);
           }
         }
+        setIsBuffering(false);
+
         if (autoPlay) {
           const p = video.play();
           if (p !== undefined) {
@@ -162,7 +164,7 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
               setIsPlaying(true);
               setIsBuffering(false);
             }).catch(() => {
-              // Unmuted autoplay blocked by browser policy. Retry with muted sound:
+              // Unmuted autoplay blocked by browser policy. Retry muted:
               video.muted = true;
               setIsMuted(true);
               video.play().then(() => {
@@ -189,13 +191,14 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
           hlsRef.current.destroy();
           hlsRef.current = null;
         }
+        setIsHls(false);
 
         let directMp4 = src;
         if (src.includes('.m3u8')) {
           directMp4 = src.replace('master.m3u8', 'master.mp4').split('?')[0];
         }
         if (!directMp4.startsWith('http://') && !directMp4.startsWith('https://')) {
-          directMp4 = (typeof window !== 'undefined' ? window.location.origin : 'https://entertainment.aurapictures.online') + 
+          directMp4 = (typeof window !== 'undefined' ? window.location.origin : 'https://entertainment.aurapictures.online') +
             (directMp4.startsWith('/') ? directMp4 : '/' + directMp4);
         }
         directMp4 = directMp4.replace(/^http:\/\//, 'https://');
@@ -322,10 +325,15 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
       setCurrentTime(video.currentTime);
       if (onTimeUpdate) onTimeUpdate(video.currentTime, video.duration);
 
-      // Calculate buffer progress
+      // FIX: find the buffered range that contains currentTime instead of always
+      // using the last range — prevents wrong buffer display on HLS multi-range buffers.
       if (video.buffered.length > 0 && video.duration > 0) {
-        const bufferedEnd = video.buffered.end(video.buffered.length - 1);
-        setBufferedPercent(Math.min(100, (bufferedEnd / video.duration) * 100));
+        for (let i = video.buffered.length - 1; i >= 0; i--) {
+          if (video.buffered.start(i) <= video.currentTime) {
+            setBufferedPercent(Math.min(100, (video.buffered.end(i) / video.duration) * 100));
+            break;
+          }
+        }
       }
     };
 
@@ -333,6 +341,10 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
       setIsPlaying(false);
       setIsBuffering(false);
       if (onEnded) onEnded();
+    };
+
+    const onFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
     };
 
     video.addEventListener('play', onPlay);
@@ -345,6 +357,7 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
     video.addEventListener('timeupdate', onTime);
     video.addEventListener('ended', onVideoEnded);
     video.addEventListener('error', onError);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
 
     return () => {
       video.removeEventListener('play', onPlay);
@@ -357,6 +370,7 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
       video.removeEventListener('timeupdate', onTime);
       video.removeEventListener('ended', onVideoEnded);
       video.removeEventListener('error', onError);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
     };
   }, [onTimeUpdate, onEnded]);
 
@@ -429,15 +443,16 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
     if (!container) return;
 
     if (!document.fullscreenElement) {
-      container.requestFullscreen?.().then(() => setIsFullscreen(true)).catch(() => {});
+      container.requestFullscreen?.().catch(() => {});
     } else {
-      document.exitFullscreen?.().then(() => setIsFullscreen(false)).catch(() => {});
+      document.exitFullscreen?.().catch(() => {});
     }
   };
 
   const selectQuality = (index: number) => {
     if (!hlsRef.current) return;
     const hls = hlsRef.current;
+    const video = videoRef.current;
 
     setCurrentLevelIndex(index);
 
@@ -457,6 +472,21 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
       }
     }
 
+    // Force immediate re-buffer & segment fetch from the backend for the chosen resolution
+    if (video) {
+      const curTime = video.currentTime;
+      hls.stopLoad();
+      hls.startLoad(curTime);
+
+      // Nudge currentTime slightly to trigger an HTML5 seek event, forcing the browser's video
+      // pipeline to flush cached frames and decode the new incoming resolution segments immediately
+      if (curTime > 0.01) {
+        video.currentTime = Math.max(0, curTime - 0.001);
+      } else {
+        video.currentTime = 0.001;
+      }
+    }
+
     setTimeout(() => {
       setShowSettings(false);
     }, 200);
@@ -472,13 +502,23 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
     }, 200);
   };
 
+  // FIX: use `availableQualitiesRef` as source of truth for deduplication so the
+  // sorted list is always stable even if `qualityLevels` state lags one render.
   const sortedQualityLevels = qualityLevels
     .map((lvl, originalIndex) => ({ ...lvl, originalIndex }))
     .filter((lvl, idx, arr) => arr.findIndex((x) => x.height === lvl.height) === idx)
     .sort((a, b) => b.height - a.height);
 
+  // Safe label for the current quality level — guards against out-of-range index
+  const currentLevelLabel = (() => {
+    if (!isHls) return 'Source';
+    if (currentLevelIndex === -1) return activeHeight ? `Auto ${activeHeight}p` : 'Auto';
+    const lvl = qualityLevels[currentLevelIndex];
+    return lvl ? `${lvl.height}p` : (activeHeight ? `${activeHeight}p` : 'Auto');
+  })();
+
   const formatTime = (secs: number) => {
-    if (isNaN(secs)) return '0:00';
+    if (isNaN(secs) || !isFinite(secs)) return '0:00';
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
     return `${m}:${s < 10 ? '0' : ''}${s}`;
@@ -501,10 +541,10 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
         className="w-full h-full object-contain cursor-pointer"
       />
 
-      {/* Buffering Spinner: only show when video is actively attempting to play and buffering */}
-      {isBuffering && isPlaying && (
+      {/* Buffering Spinner: show when buffering, regardless of play state */}
+      {isBuffering && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-black/25">
-          <div className="w-12 h-12 rounded-full border-3 border-emerald-500/20 border-t-emerald-400 animate-spin" />
+          <div className="w-12 h-12 rounded-full border-[3px] border-emerald-500/20 border-t-emerald-400 animate-spin" />
         </div>
       )}
 
@@ -544,7 +584,7 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
         </div>
 
         {/* Center Big Play Button (when paused) */}
-        {!isPlaying && (
+        {!isPlaying && !isBuffering && (
           <div className="self-center pointer-events-auto">
             <button
               onClick={togglePlay}
@@ -626,11 +666,7 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
                 >
                   <Settings size={13} className={showSettings ? 'rotate-45 transition-transform' : 'transition-transform'} />
                   <span>
-                    {isHls
-                      ? (qualityLevels.length > 0
-                          ? (currentLevelIndex === -1 ? 'Auto' : `${qualityLevels[currentLevelIndex]?.height}p`)
-                          : (activeHeight ? `${activeHeight}p` : 'Auto'))
-                      : 'Source'}
+                    {currentLevelLabel}
                     {playbackSpeed !== 1 && ` • ${playbackSpeed}x`}
                   </span>
                 </button>
@@ -652,7 +688,9 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
                             : 'text-[#64748B] hover:text-[#0F172A]'
                         }`}
                       >
-                        Quality {currentLevelIndex === -1 ? '(Auto)' : `(${qualityLevels[currentLevelIndex]?.height}p)`}
+                        Quality {currentLevelIndex === -1
+                          ? '(Auto)'
+                          : `(${qualityLevels[currentLevelIndex]?.height ?? activeHeight ?? '?'}p)`}
                       </button>
                       <button
                         type="button"

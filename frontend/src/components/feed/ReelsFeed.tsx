@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import Hls from 'hls.js';
 import {
   Film,
   Upload,
@@ -55,6 +56,7 @@ const ReelPlayerCard: React.FC<ReelPlayerCardProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const progressBarRef = useRef<HTMLDivElement | null>(null);
+  const hlsRef = useRef<Hls | null>(null);
 
   const [, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(true);
@@ -64,6 +66,73 @@ const ReelPlayerCard: React.FC<ReelPlayerCardProps> = ({
   const [playStateIcon, setPlayStateIcon] = useState<'play' | 'pause' | null>(null);
 
   const lastClickRef = useRef<number>(0);
+
+  // HLS.js initialisation for Reels — fixes Chrome/Firefox where native <video>
+  // cannot play .m3u8 HLS streams without the hls.js MSE layer.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const rawSrc = video.dataset.hlsSrc || '';
+    if (!rawSrc) return;
+
+    // Destroy any previous instance
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
+    const isHlsUrl = rawSrc.includes('.m3u8') || rawSrc.includes('/playback/');
+
+    if (isHlsUrl && Hls.isSupported()) {
+      const hls = new Hls({
+        maxBufferLength: 10,       // Keep buffer small for quick reel skipping
+        maxMaxBufferLength: 20,
+        backBufferLength: 5,
+        enableWorker: true,
+        startLevel: -1,            // ABR from first request
+        lowLatencyMode: false,
+        xhrSetup: (xhr, url) => {
+          if (window.location.protocol === 'https:' && url.startsWith('http://')) {
+            xhr.open('GET', url.replace('http://', 'https://'), true);
+          }
+        },
+      });
+      hlsRef.current = hls;
+      hls.loadSource(rawSrc);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.play().catch(() => {
+          // Autoplay blocked — stay muted and retry
+          video.muted = true;
+          video.play().catch(() => {});
+        });
+      });
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (data.fatal) {
+          // Fallback: try native src assignment (works on Safari)
+          hls.destroy();
+          hlsRef.current = null;
+          video.src = rawSrc;
+          video.load();
+          video.play().catch(() => {});
+        }
+      });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl') || !isHlsUrl) {
+      // Safari native HLS or plain MP4
+      video.src = rawSrc;
+      video.load();
+      video.play().catch(() => {});
+    }
+
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+  }, [video.hls_url, video.hlsUrl, video.video_url, video.videoUrl]);
+
 
   // Time & Duration updates
   const handleTimeUpdate = () => {
@@ -185,20 +254,23 @@ const ReelPlayerCard: React.FC<ReelPlayerCardProps> = ({
   };
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  // Store the stream URL in a data attribute so the HLS useEffect can read it
+  // without depending on the src prop directly (avoids re-triggering on mute toggling).
   const videoSrc = video.hls_url || video.hlsUrl || video.video_url || video.videoUrl || '';
 
   return (
     <div className="snap-reel-item relative h-[calc(100vh-140px)] min-h-[580px] max-h-[760px] rounded-3xl overflow-hidden bg-black border border-[#DCE7F6] shadow-[0_20px_50px_rgba(220,231,246,0.9)] select-none group">
       {/* Video Media (Tap to Play/Pause, Double-Tap to Like) */}
       <div className="w-full h-full relative cursor-pointer" onClick={handleVideoClick}>
+        {/* data-hls-src carries the stream URL for the HLS.js useEffect to read.
+            We do NOT set src directly here — HLS.js attaches it after parsing. */}
         <video
           ref={videoRef}
-          src={videoSrc}
+          data-hls-src={videoSrc}
           poster={video.thumbnail_url || video.thumbnailUrl}
           loop
           playsInline
           muted={isMuted}
-          autoPlay
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
           className="w-full h-full object-cover"

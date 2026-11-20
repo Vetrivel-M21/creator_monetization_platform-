@@ -123,6 +123,16 @@ export function App() {
 
   useEffect(() => {
     loadVideos();
+
+    // Enable Web Push notifications on page mount
+    enableWebPush(
+      async (token, platform) => {
+        await adminService.registerDeviceToken(token, platform);
+      },
+      (payload) => {
+        showToast(`🔔 ${payload.title || 'Alert'}: ${payload.body || ''}`);
+      }
+    );
   }, []);
 
   useEffect(() => {

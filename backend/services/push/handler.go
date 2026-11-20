@@ -23,9 +23,9 @@ func NewHandler(svc *Service, repo Repository) *Handler {
 // RegisterRoutes mounts all push notification endpoints onto Chi router
 func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Route("/push", func(r chi.Router) {
-		// Device token registration (Protected)
-		r.With(middleware.RequireAuth).Post("/devices", h.RegisterDevice)
-		r.With(middleware.RequireAuth).Delete("/devices", h.UnregisterDevice)
+		// Device token registration (Authenticated or Guest Device)
+		r.Post("/devices", h.RegisterDevice)
+		r.Delete("/devices", h.UnregisterDevice)
 
 		// Channel alerts subscriptions (Protected)
 		r.With(middleware.RequireAuth).Put("/channels/{id}/subscription", h.UpdateSubscription)
@@ -40,9 +40,9 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 func (h *Handler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	claims := middleware.GetUserFromContext(r)
-	if claims == nil || claims.UserID == "" {
-		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-		return
+	userID := "guest"
+	if claims != nil && claims.UserID != "" {
+		userID = claims.UserID
 	}
 
 	var req DeviceReq
@@ -56,7 +56,7 @@ func (h *Handler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 		platform = "web"
 	}
 
-	if err := h.repo.UpsertDevice(r.Context(), claims.UserID, req.Token, platform); err != nil {
+	if err := h.repo.UpsertDevice(r.Context(), userID, req.Token, platform); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"failed to register device: %v"}`, err), http.StatusInternalServerError)
 		return
 	}

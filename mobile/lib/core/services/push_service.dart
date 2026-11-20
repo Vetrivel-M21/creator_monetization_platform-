@@ -46,23 +46,8 @@ class PushService {
     if (!enabled || _started) return;
 
     try {
-      try {
-        await Firebase.initializeApp();
-      } catch (e) {
-        debugPrint('[Push] Firebase.initializeApp note: $e');
-      }
-
-      final fm = FirebaseMessaging.instance;
-      final settings = await fm.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-        provisional: false,
-      );
-
-      debugPrint('[Push] FCM permission status: ${settings.authorizationStatus}');
-
-      // Foreground notification display settings
+      // 1. Explicitly request Android 13+ (API 33+) notification runtime permission first
+      // This ensures the system OS permission prompt pops up immediately for the user
       const initSettings = InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(),
@@ -80,11 +65,10 @@ class PushService {
         },
       );
 
-      // Explicitly request Android 13+ (API 33+) notification runtime permission
       if (Platform.isAndroid) {
         final androidImpl = _local.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
         final androidGranted = await androidImpl?.requestNotificationsPermission();
-        debugPrint('[Push] Android 13+ runtime notification permission: $androidGranted');
+        debugPrint('[Push] Android 13+ runtime notification permission requested: $androidGranted');
 
         // Create high-importance notification channel
         const channel = AndroidNotificationChannel(
@@ -95,6 +79,23 @@ class PushService {
         );
         await androidImpl?.createNotificationChannel(channel);
       }
+
+      // 2. Initialize Firebase and request FCM messaging permission
+      try {
+        await Firebase.initializeApp();
+      } catch (e) {
+        debugPrint('[Push] Firebase.initializeApp note: $e');
+      }
+
+      final fm = FirebaseMessaging.instance;
+      final settings = await fm.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        provisional: false,
+      );
+
+      debugPrint('[Push] FCM permission status: ${settings.authorizationStatus}');
 
       final platform = Platform.isIOS ? 'ios' : 'android';
       final token = await fm.getToken();

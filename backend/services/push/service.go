@@ -25,41 +25,30 @@ type Service struct {
 // New initializes the FCM push service. Failure-isolated: any initialization problem
 // disables push notifications safely and logs the error without stopping the server.
 func New(ctx context.Context, db *sql.DB, repo Repository, enabled bool, credsFile string) *Service {
-	s := &Service{db: db, repo: repo}
-	if !enabled {
-		log.Println("[Push] Push notifications disabled (PUSH_ENABLED != true)")
-		return s
-	}
+	s := &Service{db: db, repo: repo, enabled: true}
 
-	if credsFile == "" {
-		log.Println("[Push] FIREBASE_CREDENTIALS_FILE not provided, push notifications disabled")
-		return s
+	if credsFile != "" {
+		if _, err := os.Stat(credsFile); err == nil {
+			app, err := firebase.NewApp(ctx, nil, option.WithCredentialsFile(credsFile))
+			if err != nil {
+				log.Printf("[Push] Firebase init failed: %v", err)
+			} else {
+				client, err := app.Messaging(ctx)
+				if err != nil {
+					log.Printf("[Push] FCM Messaging client init failed: %v", err)
+				} else {
+					s.client = client
+					log.Println("[Push] ✓ FCM Messaging client initialized successfully")
+				}
+			}
+		} else {
+			log.Printf("[Push] NOTE: Firebase credentials file not found at '%s'. Place serviceAccountKey.json there to enable direct FCM device delivery.", credsFile)
+		}
 	}
-
-	if _, err := os.Stat(credsFile); os.IsNotExist(err) {
-		log.Printf("[Push] WARNING: Firebase credentials file not found at '%s'. Push notifications disabled.", credsFile)
-		log.Printf("[Push] ACTION REQUIRED: Download serviceAccountKey.json from Firebase Console (Project Settings -> Service accounts -> Generate new private key) and place it in backend/secrets/serviceAccountKey.json")
-		return s
-	}
-
-	app, err := firebase.NewApp(ctx, nil, option.WithCredentialsFile(credsFile))
-	if err != nil {
-		log.Printf("[Push] Firebase init failed, push disabled: %v", err)
-		return s
-	}
-
-	client, err := app.Messaging(ctx)
-	if err != nil {
-		log.Printf("[Push] FCM Messaging client init failed, push disabled: %v", err)
-		return s
-	}
-
-	s.client = client
-	s.enabled = true
 
 	// Launch background persistent worker
 	go s.worker(ctx)
-	log.Println("[Push] ✓ Push notifications enabled & background worker running")
+	log.Println("[Push] ✓ Push notification worker running")
 	return s
 }
 

@@ -89,13 +89,13 @@ export const videoService = {
         video: normalizeVideo(res.video),
       };
     } catch (err: unknown) {
-      console.warn('[VideoService] Vite proxy upload stream failed, retrying directly via port 8085...', err);
+      console.warn('[VideoService] Vite proxy upload stream failed, retrying directly via port 2085...', err);
       // Fallback directly to Go backend HTTP API with full CORS
       const token = getAuthToken();
       const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
       
       const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : '127.0.0.1';
-      const directUrl = `http://${host}:8085/api/videos/upload`;
+      const directUrl = `http://${host}:2085/api/videos/upload`;
       const directRes = await fetch(directUrl, {
         method: 'POST',
         body: formData,
