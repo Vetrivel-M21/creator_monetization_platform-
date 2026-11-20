@@ -436,62 +436,26 @@ export const HLSPlayer: React.FC<HLSPlayerProps> = ({
   };
 
   const selectQuality = (index: number) => {
-    if (!hlsRef.current || !videoRef.current) return;
-    
-    const video = videoRef.current;
-    const curTime = video.currentTime;
-    const wasPlaying = !video.paused;
+    if (!hlsRef.current) return;
+    const hls = hlsRef.current;
 
     setCurrentLevelIndex(index);
 
-    const activeLevels = availableQualitiesRef.current.length > 0 
-      ? availableQualitiesRef.current 
-      : qualityLevels;
-
     if (index === -1) {
-      // Auto (Adaptive): reload master playlist with full ABR ladder
-      setActiveHeight(null);
-      hlsRef.current.currentLevel = -1;
-      if (masterSrcRef.current && masterSrcRef.current !== hlsRef.current.url) {
-        hlsRef.current.loadSource(masterSrcRef.current);
+      // Auto (Adaptive): let Hls.js dynamically select level based on bandwidth
+      hls.currentLevel = -1;
+      const cur = (hls.loadLevel >= 0 && hls.levels[hls.loadLevel]) ? hls.levels[hls.loadLevel] : hls.levels[0];
+      if (cur) {
+        setActiveHeight(cur.height);
       }
     } else {
-      const targetLevel = activeLevels[index];
-      if (targetLevel) {
-        setActiveHeight(targetLevel.height);
-        
-        // ARMSS-OTT pattern: stream directly from that rendition's variant playlist
-        const renditionUrl = (targetLevel.url && targetLevel.url[0]) ? targetLevel.url[0] : '';
-        if (renditionUrl) {
-          hlsRef.current.loadSource(renditionUrl);
-        } else {
-          hlsRef.current.currentLevel = index;
-        }
+      // Manual Quality Lock: tell Hls.js to immediately lock onto chosen resolution
+      hls.currentLevel = index;
+      const target = hls.levels[index];
+      if (target) {
+        setActiveHeight(target.height);
       }
     }
-
-    // Seamlessly restore playback time without stutter
-    const restoreTime = () => {
-      try {
-        if (curTime > 0) {
-          video.currentTime = curTime;
-        }
-        if (wasPlaying) {
-          video.play().catch(() => {});
-        }
-      } catch (_) {}
-    };
-
-    hlsRef.current.once(Hls.Events.LEVEL_LOADED, restoreTime);
-
-    // Immediate micro-nudge for video decoder if paused
-    try {
-      if (curTime > 0.01) {
-        video.currentTime = curTime - 0.001;
-      } else if (video.duration > 0.1) {
-        video.currentTime = curTime + 0.005;
-      }
-    } catch (_) {}
 
     setTimeout(() => {
       setShowSettings(false);
